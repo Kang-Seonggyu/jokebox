@@ -6,6 +6,8 @@ import android.os.Build
 import android.os.Bundle
 import android.content.ContentUris
 import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.provider.MediaStore
 import android.net.Uri
 import androidx.activity.ComponentActivity
@@ -16,11 +18,17 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -31,16 +39,16 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.material3.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.IconButton
-import android.content.pm.PackageManager
 import androidx.compose.ui.layout.ContentScale
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
@@ -48,7 +56,10 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.common.Player
 import androidx.media3.common.C
 import coil.compose.AsyncImage
+import org.json.JSONArray
+import org.json.JSONObject
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -97,7 +108,7 @@ private suspend fun loadMusic(context: Context): List<Song> =
         )
 
         val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
-        val sortOrder = "${MediaStore.Audio.Media.TITLE} ASC"
+        val sortOrder = "${MediaStore.Audio.Media.TITLE} COLLATE NOCASE ASC"
 
         context.contentResolver.query(
             collection,
@@ -176,24 +187,22 @@ private suspend fun loadMusic(context: Context): List<Song> =
 
 @Composable
 fun JokeboxApp() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val categoryCoverPrefs = remember {
+        context.getSharedPreferences(
+            "jokebox_preferences",
+            android.content.Context.MODE_PRIVATE
+        )
+    }
+
     var selectedTab by remember { mutableStateOf("Home") }
-    // 검색어 상태
-    var searchQuery by remember {
-        mutableStateOf("")
-    }
+    var searchQuery by remember { mutableStateOf("") }
     var selectedSong by remember { mutableStateOf<Song?>(null) }
-    // 좋아요한 음악 ID 목록
-    var favoriteSongIds by remember {
-        mutableStateOf<Set<Long>>(emptySet())
-    }
-    // 사용자가 만든 재생목록
-    var playlists by remember {
-        mutableStateOf<List<MusicPlaylist>>(emptyList())
-    }
+    var favoriteSongIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    var playlists by remember { mutableStateOf<List<MusicPlaylist>>(emptyList()) }
     var playlistsLoaded by remember {
         mutableStateOf(false)
     }
-    // 즐겨찾기 데이터 로딩 완료 여부
     var favoritesLoaded by remember {
         mutableStateOf(false)
     }
@@ -206,19 +215,15 @@ fun JokeboxApp() {
     var playCounts by remember {
         mutableStateOf<Map<Long, Int>>(emptyMap())
     }
-
     var playCountsLoaded by remember {
         mutableStateOf(false)
     }
-    // 현재 곡의 실제 재생 누적 시간
     var listenedDuration by remember {
         mutableLongStateOf(0L)
     }
-    // 현재 재생 세션에서 카운트했는지 확인
     var playCountRegistered by remember {
         mutableStateOf(false)
     }
-
     var showNowPlaying by remember {
         mutableStateOf(false)
     }
@@ -227,6 +232,34 @@ fun JokeboxApp() {
     }
     var selectedPlaylist by remember {
         mutableStateOf<MusicPlaylist?>(null)
+    }
+    var showEditPlaylistDialog by remember {
+        mutableStateOf(false)
+    }
+    var showDeletePlaylistDialog by remember { mutableStateOf(false) }
+    var pendingPlaylistCoverId by remember {
+        mutableStateOf<Long?>(null)
+    }
+    var categoryCoverUris by remember {
+        mutableStateOf(
+            listOf(
+                "Favorites",
+                "Recently Added",
+                "Recently Played",
+                "Most Played"
+            ).mapNotNull { key ->
+                val savedUri = categoryCoverPrefs.getString(
+                    "category_cover_$key",
+                    null
+                )
+
+                if (savedUri != null) {
+                    key to Uri.parse(savedUri)
+                } else {
+                    null
+                }
+            }.toMap()
+        )
     }
 
     BackHandler(
@@ -248,7 +281,8 @@ fun JokeboxApp() {
             }
         }
     }
-    val context = androidx.compose.ui.platform.LocalContext.current
+
+
     // 앱 실행 시 저장된 즐겨찾기 불러오기
     LaunchedEffect(Unit) {
         val preferences = context.getSharedPreferences(
@@ -480,6 +514,65 @@ fun JokeboxApp() {
     ) { isGranted ->
         hasAudioPermission = isGranted
     }
+    var pendingCategoryCoverKey by remember {
+        mutableStateOf<String?>(null)
+    }
+
+    val playlistCoverPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        val playlistId = pendingPlaylistCoverId
+
+        if (uri != null && playlistId != null) {
+            val updatedPlaylist = playlists.find {
+                it.id == playlistId
+            }?.copy(coverUri = uri)
+
+            if (updatedPlaylist != null) {
+                playlists = playlists.map { playlist ->
+                    if (playlist.id == playlistId) {
+                        updatedPlaylist
+                    } else {
+                        playlist
+                    }
+                }
+
+                selectedPlaylist = updatedPlaylist
+            }
+
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (_: Exception) {
+            }
+        }
+
+        pendingPlaylistCoverId = null
+    }
+    val categoryCoverPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null && pendingCategoryCoverKey != null) {
+            categoryCoverUris =
+                categoryCoverUris + (pendingCategoryCoverKey!! to uri)
+            categoryCoverPrefs.edit()
+                .putString(
+                    "category_cover_${pendingCategoryCoverKey!!}",
+                    uri.toString()
+                )
+                .apply()
+
+            try {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (_: Exception) {
+            }
+        }
+    }
 
     // 3. 실제 음악 목록
     var songs by remember {
@@ -563,7 +656,11 @@ fun JokeboxApp() {
             }
 
             // 현재 재생 중인 곡을 화면에 반영
-            val currentSong = songs.getOrNull(player.currentMediaItemIndex)
+            val currentUri = player.currentMediaItem
+                ?.localConfiguration
+                ?.uri
+
+            val currentSong = songs.find { it.uri == currentUri }
 
             if (currentSong != null && currentSong != selectedSong) {
                 selectedSong = currentSong
@@ -799,20 +896,23 @@ fun JokeboxApp() {
 
                         "Playlists" -> {
                             if (selectedPlaylist != null) {
+                                val playlistSongs = songs.filter {
+                                    it.id in selectedPlaylist!!.songIds
+                                }
                                 PlaylistDetailContent(
-                                    songs = songs.filter {
-                                        it.id in selectedPlaylist!!.songIds
-                                    },
+                                    songs = playlistSongs,
                                     onSongClick = { song ->
-                                        selectedSong = song
-
-                                        val mediaItems = songs.map { item ->
+                                        val mediaItems = playlistSongs.map { item ->
                                             MediaItem.fromUri(item.uri)
                                         }
 
-                                        val selectedIndex = songs.indexOf(song)
+                                        val selectedIndex = playlistSongs.indexOfFirst {
+                                            it.id == song.id
+                                        }
 
                                         if (selectedIndex >= 0) {
+                                            selectedSong = song
+
                                             player.setMediaItems(
                                                 mediaItems,
                                                 selectedIndex,
@@ -822,12 +922,200 @@ fun JokeboxApp() {
                                             player.play()
                                         }
                                     },
+                                    onEditClick = {
+                                        showEditPlaylistDialog = true
+                                    },
+                                    onDeleteClick = {
+                                        showDeletePlaylistDialog = true
+                                    },
                                     title = selectedPlaylist!!.name,
                                     emptyMessage = "아직 추가된 음악이 없습니다.",
-                                            onBackClick = {
+                                    onBackClick = {
                                         selectedPlaylist = null
+                                    },
+                                    onEditSongs = { selectedIds ->
+                                        val updatedPlaylist = selectedPlaylist!!.copy(
+                                            songIds = selectedIds.toSet()
+                                        )
+
+                                        playlists = playlists.map { playlist ->
+                                            if (playlist.id == updatedPlaylist.id) {
+                                                updatedPlaylist
+                                            } else {
+                                                playlist
+                                            }
+                                        }
+
+                                        selectedPlaylist = updatedPlaylist
+
+                                        val jsonArray = JSONArray()
+
+                                        playlists.forEach { playlist ->
+                                            val jsonObject = JSONObject().apply {
+                                                put("id", playlist.id)
+                                                put("name", playlist.name)
+                                                put("songIds", JSONArray(playlist.songIds.toList()))
+                                                put("coverUri", playlist.coverUri?.toString())
+                                            }
+
+                                            jsonArray.put(jsonObject)
+                                        }
+
+                                        categoryCoverPrefs.edit()
+                                            .putString("playlists", jsonArray.toString())
+                                            .apply()
+                                    },
+                                    onPlayClick = {
+                                        if (playlistSongs.isNotEmpty()) {
+                                            val mediaItems = playlistSongs.map { item ->
+                                                MediaItem.fromUri(item.uri)
+                                            }
+
+                                            selectedSong = playlistSongs.first()
+
+                                            player.setMediaItems(mediaItems, 0, 0L)
+                                            player.prepare()
+                                            player.play()
+                                        }
+                                    },
+                                    onShuffleClick = {
+                                        if (playlistSongs.isNotEmpty()) {
+                                            val shuffledSongs = playlistSongs.shuffled()
+
+                                            val mediaItems = shuffledSongs.map { item ->
+                                                MediaItem.fromUri(item.uri)
+                                            }
+
+                                            selectedSong = shuffledSongs.first()
+
+                                            player.setMediaItems(mediaItems, 0, 0L)
+                                            player.prepare()
+                                            player.play()
+                                        }
+                                    },
+                                    allSongs = songs,
+                                    isCustomPlaylist = true,
+                                    coverUri = selectedPlaylist!!.coverUri,
+                                    onChangeCoverClick = {
+                                        pendingPlaylistCoverId = selectedPlaylist!!.id
+
+                                        playlistCoverPicker.launch(
+                                            PickVisualMediaRequest(
+                                                ActivityResultContracts.PickVisualMedia.ImageOnly
+                                            )
+                                        )
                                     }
                                 )
+
+                                if (showEditPlaylistDialog && selectedPlaylist != null) {
+                                    var editedPlaylistName by remember(selectedPlaylist!!.id) {
+                                        mutableStateOf(selectedPlaylist!!.name)
+                                    }
+
+                                    AlertDialog(
+                                        onDismissRequest = {
+                                            showEditPlaylistDialog = false
+                                        },
+                                        title = {
+                                            Text("Edit Playlist")
+                                        },
+                                        text = {
+                                            OutlinedTextField(
+                                                value = editedPlaylistName,
+                                                onValueChange = {
+                                                    editedPlaylistName = it
+                                                },
+                                                label = {
+                                                    Text("Playlist Name")
+                                                },
+                                                singleLine = true
+                                            )
+                                        },
+                                        confirmButton = {
+                                            TextButton(
+                                                onClick = {
+                                                    val updatedPlaylist = selectedPlaylist!!.copy(
+                                                        name = editedPlaylistName.trim()
+                                                    )
+
+                                                    playlists = playlists.map { playlist ->
+                                                        if (playlist.id == updatedPlaylist.id) {
+                                                            updatedPlaylist
+                                                        } else {
+                                                            playlist
+                                                        }
+                                                    }
+
+                                                    selectedPlaylist = updatedPlaylist
+
+                                                    val jsonArray = JSONArray()
+                                                    playlists.forEach { playlist ->
+                                                        val jsonObject = JSONObject().apply {
+                                                            put("id", playlist.id)
+                                                            put("name", playlist.name)
+                                                            put("songIds", JSONArray(playlist.songIds.toList()))
+                                                            put("coverUri", playlist.coverUri?.toString())
+                                                        }
+                                                        jsonArray.put(jsonObject)
+                                                    }
+
+                                                    categoryCoverPrefs.edit()
+                                                        .putString("playlists", jsonArray.toString())
+                                                        .apply()
+
+                                                    showEditPlaylistDialog = false
+                                                }
+                                            ) {
+                                                Text("Save")
+                                            }
+                                        },
+                                        dismissButton = {
+                                            TextButton(
+                                                onClick = {
+                                                    showEditPlaylistDialog = false
+                                                }
+                                            ) {
+                                                Text("Cancel")
+                                            }
+                                        }
+                                    )
+                                }
+                                if (showDeletePlaylistDialog) {
+                                    AlertDialog(
+                                        onDismissRequest = {
+                                            showDeletePlaylistDialog = false
+                                        },
+                                        title = {
+                                            Text("재생목록 삭제")
+                                        },
+                                        text = {
+                                            Text(" '${selectedPlaylist?.name}' 재생목록을 삭제하시겠습니까?\n삭제하면 복구할 수 없습니다.")
+                                        },
+                                        confirmButton = {
+                                            TextButton(
+                                                onClick = {
+                                                    playlists = playlists.filter {
+                                                        it.id != selectedPlaylist?.id
+                                                    }
+                                                    selectedPlaylist = null
+                                                    selectedTab = "Playlists"
+                                                    showDeletePlaylistDialog = false
+                                                }
+                                            ) {
+                                                Text("삭제", color = Color.Red)
+                                            }
+                                        },
+                                        dismissButton = {
+                                            TextButton(
+                                                onClick = {
+                                                    showDeletePlaylistDialog = false
+                                                }
+                                            ) {
+                                                Text("취소")
+                                            }
+                                        }
+                                    )
+                                }
                             } else if (selectedCategory == null) {
                                 PlaylistsContent(
                                     playlists = playlists,
@@ -844,7 +1132,8 @@ fun JokeboxApp() {
                                     },
                                     onPlaylistClick = { playlist ->
                                         selectedPlaylist = playlist
-                                    }
+                                    },
+                                    categoryCoverUris = categoryCoverUris
                                 )
                             } else {
                                 when (selectedCategory) {
@@ -880,7 +1169,25 @@ fun JokeboxApp() {
                                                     showNowPlaying = true
                                                 }
                                             },
+                                            emptyMessage = "최근에 추가한 음악이 없습니다.",
+                                            coverUri = categoryCoverUris["Recently Added"],
+                                            onChangeCoverClick = {
+                                                pendingCategoryCoverKey = "Recently Added"
+                                                categoryCoverPicker.launch(
+                                                    PickVisualMediaRequest(
+                                                        ActivityResultContracts.PickVisualMedia.ImageOnly
+                                                    )
+                                                )
+                                            },
+                                            onResetCoverClick = {
+                                                categoryCoverUris = categoryCoverUris - "Recently Added"
+
+                                                categoryCoverPrefs.edit()
+                                                    .remove("category_cover_Recently Added")
+                                                    .apply()
+                                            },
                                             title = "최근에 추가한 곡",
+                                            allSongs = songs,
                                         )
 
                                     }
@@ -911,7 +1218,23 @@ fun JokeboxApp() {
                                                     showNowPlaying = true
                                                 }
                                             },
-                                            title = "최근 재생한 곡"
+                                            coverUri = categoryCoverUris["Recently Played"],
+                                            onChangeCoverClick = {
+                                                pendingCategoryCoverKey = "Recently Played"
+                                                categoryCoverPicker.launch(
+                                                    PickVisualMediaRequest(
+                                                        ActivityResultContracts.PickVisualMedia.ImageOnly
+                                                    )
+                                                )
+                                            },
+                                            onResetCoverClick = {
+                                                categoryCoverUris = categoryCoverUris - "Recently Played"
+                                                categoryCoverPrefs.edit()
+                                                    .remove("category_cover_Recently Played")
+                                                    .apply()
+                                            },
+                                            title = "최근 재생한 곡",
+                                            allSongs = songs,
                                         )
                                     }
                                     "많이 재생한 곡" -> {
@@ -924,7 +1247,6 @@ fun JokeboxApp() {
 
                                         PlaylistDetailContent(
                                             songs = mostPlayedSongs,
-                                            title = "많이 재생한 곡",
                                             onSongClick = { song ->
                                                 val mediaItems = songs.map { item ->
                                                     MediaItem.fromUri(item.uri)
@@ -944,7 +1266,24 @@ fun JokeboxApp() {
                                                     selectedSong = song
                                                     showNowPlaying = true
                                                 }
-                                            }
+                                            },
+                                            coverUri = categoryCoverUris["Most Played"],
+                                            onChangeCoverClick = {
+                                                pendingCategoryCoverKey = "Most Played"
+                                                categoryCoverPicker.launch(
+                                                    PickVisualMediaRequest(
+                                                        ActivityResultContracts.PickVisualMedia.ImageOnly
+                                                    )
+                                                )
+                                            },
+                                            onResetCoverClick = {
+                                                categoryCoverUris = categoryCoverUris - "Most Played"
+                                                categoryCoverPrefs.edit()
+                                                    .remove("category_cover_Most Played")
+                                                    .apply()
+                                            },
+                                            title = "많이 재생한 곡",
+                                            allSongs = songs,
                                         )
                                     }
                                     "좋아요 표시한 곡" -> {
@@ -970,7 +1309,24 @@ fun JokeboxApp() {
                                                     showNowPlaying = true
                                                 }
                                             },
-                                            title = "좋아요 표시한 곡"
+                                            emptyMessage = "아직 좋아요한 음악이 없습니다.",
+                                            title = "좋아요 표시한 곡",
+                                            allSongs = songs,
+                                            coverUri = categoryCoverUris["Favorites"],
+                                            onChangeCoverClick = {
+                                                pendingCategoryCoverKey = "Favorites"
+                                                categoryCoverPicker.launch(
+                                                    PickVisualMediaRequest(
+                                                        ActivityResultContracts.PickVisualMedia.ImageOnly
+                                                    )
+                                                )
+                                            },
+                                            onResetCoverClick = {
+                                                categoryCoverUris = categoryCoverUris - "Favorites"
+                                                categoryCoverPrefs.edit()
+                                                    .remove("category_cover_Favorites")
+                                                    .apply()
+                                            },
                                         )
                                     }
 
@@ -991,7 +1347,8 @@ fun JokeboxApp() {
                                             },
                                             onPlaylistClick = { playlist ->
                                                 selectedPlaylist = playlist
-                                            }
+                                            },
+                                            categoryCoverUris = categoryCoverUris
                                         )
                                     }
                                 }
@@ -1227,26 +1584,32 @@ fun MiniPlayer(
                 Text(
                     text = "⏮",
                     color = JokeboxColors.TextPrimary,
-                    modifier = Modifier.clickable {
-                        onPrevious()
-                    }.padding(8.dp)
+                    modifier = Modifier
+                        .clickable {
+                            onPrevious()
+                        }
+                        .padding(8.dp)
                 )
 
                 Text(
                     text = if (isPlaying) "Ⅱ" else "▶",
                     color = JokeboxColors.Primary,
                     fontSize = 22.sp,
-                    modifier = Modifier.clickable {
-                        onPlayPause()
-                    }.padding(8.dp)
+                    modifier = Modifier
+                        .clickable {
+                            onPlayPause()
+                        }
+                        .padding(8.dp)
                 )
 
                 Text(
                     text = "⏭",
                     color = JokeboxColors.TextPrimary,
-                    modifier = Modifier.clickable {
-                        onNext()
-                    }.padding(8.dp)
+                    modifier = Modifier
+                        .clickable {
+                            onNext()
+                        }
+                        .padding(8.dp)
                 )
             }
 
@@ -1305,42 +1668,246 @@ fun PlaylistDetailContent (
     songs: List<Song>,
     onSongClick: (Song) -> Unit,
     title: String = "Favorites",
-    emptyMessage: String = "아직 좋아요한 음악이 없습니다.",
-    onBackClick: (() -> Unit)? = null
+    emptyMessage: String = "아직 재생한 음악이 없습니다.",
+    onBackClick: (() -> Unit)? = null,
+    allSongs: List<Song> = emptyList(),
+    onEditSongs: ((List<Long>) -> Unit)? = null,
+    coverUri: Uri? = null,
+    onShuffleClick: (() -> Unit)? = null,
+    onPlayClick: (() -> Unit)? = null,
+    onEditClick: (() -> Unit)? = null,
+    onDeleteClick: (() -> Unit)? = null,
+    isCustomPlaylist: Boolean = false,
+    onChangeCoverClick: (() -> Unit)? = null,
+    onResetCoverClick: (() -> Unit)? = null,
 ) {
+    var showEditSongsDialog by remember {
+        mutableStateOf(false)
+    }
+    var showPlaylistMenu by remember {
+        mutableStateOf(false)
+    }
+    var selectedSongIds by remember {
+        mutableStateOf(setOf<Long>())
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(JokeboxColors.Background)
             .padding(16.dp)
     ) {
+        // 총 재생시간 계산
+        val totalSeconds = songs.sumOf { song ->
+            val parts = song.duration.split(":")
+            when (parts.size) {
+                2 -> (parts[0].toIntOrNull() ?: 0) * 60 +
+                        (parts[1].toIntOrNull() ?: 0)
+                3 -> (parts[0].toIntOrNull() ?: 0) * 3600 +
+                        (parts[1].toIntOrNull() ?: 0) * 60 +
+                        (parts[2].toIntOrNull() ?: 0)
+                else -> 0
+            }
+        }
+
+        val totalDurationText =
+            if (totalSeconds >= 3600) {
+                "${totalSeconds / 3600} hr ${(totalSeconds % 3600) / 60} min"
+            } else {
+                "${totalSeconds / 60} min ${totalSeconds % 60} sec"
+            }
+
+// 상단 뒤로가기 + 메뉴
         Row(
             modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (onBackClick != null) {
+            IconButton(
+                onClick = { onBackClick?.invoke() }
+            ) {
+                Text(
+                    text = "<",
+                    color = JokeboxColors.TextPrimary,
+                    fontSize = 28.sp
+                )
+            }
+
+            Box {
                 IconButton(
-                    onClick = onBackClick
+                    onClick = {
+                        showPlaylistMenu = true
+                    }
                 ) {
                     Text(
-                        text = "←",
+                        text = "⋮",
                         color = JokeboxColors.TextPrimary,
                         fontSize = 28.sp
                     )
                 }
 
-                Spacer(modifier = Modifier.width(4.dp))
-            }
+                DropdownMenu(
+                    expanded = showPlaylistMenu,
+                    onDismissRequest = { showPlaylistMenu = false }
+                ) {
+                    if (isCustomPlaylist) {
+                        DropdownMenuItem(
+                            text = { Text("곡 편집") },
+                            onClick = {
+                                showPlaylistMenu = false
+                                selectedSongIds = songs.map { it.id }.toSet()
+                                showEditSongsDialog = true
+                            }
+                        )
 
-            Text(
-                text = title,
-                color = JokeboxColors.TextPrimary,
-                fontSize = 26.sp,
-                fontWeight = FontWeight.Bold
-            )
+                        DropdownMenuItem(
+                            text = { Text("대표 이미지 변경") },
+                            onClick = {
+                                showPlaylistMenu = false
+                                onChangeCoverClick?.invoke()
+                            }
+                        )
+
+                        DropdownMenuItem(
+                            text = { Text("재생목록 제목 변경") },
+                            onClick = {
+                                showPlaylistMenu = false
+                                onEditClick?.invoke()
+                            }
+                        )
+
+                        DropdownMenuItem(
+                            text = { Text("재생목록 삭제", color = Color.Red) },
+                            onClick = {
+                                showPlaylistMenu = false
+                                onDeleteClick?.invoke()
+                            }
+                        )
+                    } else {
+                        DropdownMenuItem(
+                            text = { Text("대표 이미지 변경") },
+                            onClick = {
+                                showPlaylistMenu = false
+                                onChangeCoverClick?.invoke()
+                            }
+                        )
+
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    "기본 대표 이미지 설정",
+                                    color = JokeboxColors.TextPrimary
+                                )
+                            },
+                            onClick = {
+                                showPlaylistMenu = false
+                                onResetCoverClick?.invoke()
+                            }
+                        )
+                    }
+                }
+            }
         }
 
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // 앨범 커버 + 플레이리스트 정보
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 커버 이미지
+            if (coverUri != null) {
+                AsyncImage(
+                    model = coverUri,
+                    contentDescription = "Playlist Cover",
+                    modifier = Modifier
+                        .size(145.dp)
+                        .clip(RoundedCornerShape(12.dp)),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(145.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(JokeboxColors.SurfaceVariant),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "♫",
+                        color = JokeboxColors.Primary,
+                        fontSize = 52.sp
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(16.dp))
+
+            // 제목, 곡 개수, 총 재생시간, 재생 버튼
+            Column(
+                modifier = Modifier.weight(1f)
+            ) {
+                Text(
+                    text = title,
+                    color = JokeboxColors.TextPrimary,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Text(
+                    text = "${songs.size} songs",
+                    color = JokeboxColors.TextSecondary,
+                    fontSize = 14.sp
+                )
+
+                Text(
+                    text = totalDurationText,
+                    color = JokeboxColors.TextSecondary,
+                    fontSize = 14.sp
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Button(
+                        onClick = { onShuffleClick?.invoke() },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFFFD54A)
+                        ),
+                        contentPadding = PaddingValues(0.dp),
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Text(
+                            text = "⤨",
+                            color = Color.Black,
+                            fontSize = 22.sp
+                        )
+                    }
+
+                    Button(
+                        onClick = { onPlayClick?.invoke() },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFFFD54A)
+                        ),
+                        contentPadding = PaddingValues(0.dp),
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Text(
+                            text = "▶",
+                            color = Color.Black,
+                            fontSize = 20.sp
+                        )
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
 
         if (songs.isEmpty()) {
             Text(
@@ -1357,6 +1924,175 @@ fun PlaylistDetailContent (
                     )
                 }
             }
+        }
+
+        if (showEditSongsDialog) {
+            val availableSongs = allSongs
+
+            AlertDialog(
+                onDismissRequest = {
+                    showEditSongsDialog = false
+                    selectedSongIds = emptySet()
+                },
+                containerColor = JokeboxColors.Surface,
+                title = {
+                    Text(
+                        text = "곡 선택",
+                        color = JokeboxColors.TextPrimary
+                    )
+                },
+                text = {
+                    Column {
+                        if (availableSongs.isEmpty()) {
+                            Text(
+                                text = "추가할 수 있는 음악이 없습니다.",
+                                color = JokeboxColors.TextSecondary
+                            )
+                        } else {
+                            Row(
+                                modifier = Modifier.heightIn(max = 400.dp)
+                            ) {
+                                val songListState = rememberLazyListState()
+                                val indexScope = rememberCoroutineScope()
+
+                                val indexLetters = listOf("#") +
+                                        ('A'..'Z').map { it.toString() } +
+                                        listOf(
+                                            "ㄱ", "ㄴ", "ㄷ", "ㄹ", "ㅁ", "ㅂ", "ㅅ",
+                                            "ㅇ", "ㅈ", "ㅊ", "ㅋ", "ㅌ", "ㅍ", "ㅎ"
+                                        )
+
+                                fun getIndexKey(title: String): String {
+                                    val ch = title.firstOrNull { !it.isWhitespace() }
+                                        ?.uppercaseChar() ?: return "#"
+
+                                    if (ch in '가'..'힣') {
+                                        val initials = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ"
+                                        val index = (ch.code - '가'.code) / 588
+                                        return when (initials[index]) {
+                                            'ㄲ' -> "ㄱ"
+                                            'ㄸ' -> "ㄷ"
+                                            'ㅃ' -> "ㅂ"
+                                            'ㅆ' -> "ㅅ"
+                                            'ㅉ' -> "ㅈ"
+                                            else -> initials[index].toString()
+                                        }
+                                    }
+
+                                    return when {
+                                        ch.isDigit() -> "#"
+                                        ch in 'A'..'Z' -> ch.toString()
+                                        else -> "#"
+                                    }
+                                }
+
+                                LazyColumn(
+                                    state = songListState,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    items(availableSongs) { song ->
+                                        val isSelected = song.id in selectedSongIds
+
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable {
+                                                    selectedSongIds =
+                                                        if (isSelected) {
+                                                            selectedSongIds - song.id
+                                                        } else {
+                                                            selectedSongIds + song.id
+                                                        }
+                                                }
+                                                .padding(vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Checkbox(
+                                                checked = isSelected,
+                                                onCheckedChange = { checked ->
+                                                    selectedSongIds =
+                                                        if (checked) {
+                                                            selectedSongIds + song.id
+                                                        } else {
+                                                            selectedSongIds - song.id
+                                                        }
+                                                }
+                                            )
+
+                                            Column(
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Text(
+                                                    text = song.title,
+                                                    color = JokeboxColors.TextPrimary,
+                                                    maxLines = 1
+                                                )
+                                                Text(
+                                                    text = song.artist,
+                                                    color = JokeboxColors.TextSecondary,
+                                                    fontSize = 12.sp,
+                                                    maxLines = 1
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                                Column(
+                                    modifier = Modifier
+                                        .width(24.dp)
+                                        .height(400.dp)
+                                        .verticalScroll(rememberScrollState()),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Top
+                                ) {
+                                    indexLetters.forEach { letter ->
+                                        Text(
+                                            text = letter,
+                                            fontSize = 10.sp,
+                                            lineHeight = 16.sp,
+                                            color = JokeboxColors.TextSecondary,
+                                            modifier = Modifier
+                                                .clickable {
+                                                    val targetIndex = availableSongs.indexOfFirst {
+                                                        getIndexKey(it.title) == letter
+                                                    }
+
+                                                    if (targetIndex >= 0) {
+                                                        indexScope.launch {
+                                                            songListState.scrollToItem(targetIndex)
+                                                        }
+                                                    }
+                                                }
+                                                .padding(vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            onEditSongs?.invoke(selectedSongIds.toList())
+                            selectedSongIds = emptySet()
+                            showEditSongsDialog = false
+                        }
+                    ) {
+                        Text("저장", color = JokeboxColors.Primary)
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        onClick = {
+                            showEditSongsDialog = false
+                            selectedSongIds = emptySet()
+                        }
+                    ) {
+                        Text("취소", color = JokeboxColors.TextSecondary)
+                    }
+                }
+            )
         }
     }
 }
@@ -1625,9 +2361,11 @@ fun NowPlayingContent(
                 } else {
                     JokeboxColors.TextSecondary
                 },
-                modifier = Modifier.clickable {
-                    onToggleShuffle()
-                }.padding(8.dp)
+                modifier = Modifier
+                    .clickable {
+                        onToggleShuffle()
+                    }
+                    .padding(8.dp)
             )
 
             Text(
@@ -1642,9 +2380,11 @@ fun NowPlayingContent(
                 } else {
                     JokeboxColors.TextSecondary
                 },
-                modifier = Modifier.clickable {
-                    onCycleRepeat()
-                }.padding(8.dp)
+                modifier = Modifier
+                    .clickable {
+                        onCycleRepeat()
+                    }
+                    .padding(8.dp)
             )
         }
         Row(
@@ -1709,7 +2449,8 @@ fun PlaylistsContent(
     playlists: List<MusicPlaylist>,
     onCategoryClick: (String) -> Unit,
     onCreatePlaylist: (String, Uri?) -> Unit,
-    onPlaylistClick: (MusicPlaylist) -> Unit
+    onPlaylistClick: (MusicPlaylist) -> Unit,
+    categoryCoverUris: Map<String, Uri>
 ) {
     var showCreateDialog by remember {
         mutableStateOf(false)
@@ -1797,11 +2538,30 @@ fun PlaylistsContent(
                                         .background(JokeboxColors.SurfaceVariant),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Text(
-                                        text = symbol,
-                                        color = JokeboxColors.Primary,
-                                        fontSize = 42.sp
-                                    )
+                                    val categoryKey = when (name) {
+                                        "좋아요 표시한 곡" -> "Favorites"
+                                        "최근에 추가한 곡" -> "Recently Added"
+                                        "최근 재생한 곡" -> "Recently Played"
+                                        "많이 재생한 곡" -> "Most Played"
+                                        else -> ""
+                                    }
+
+                                    val coverUri = categoryCoverUris[categoryKey]
+
+                                    if (coverUri != null) {
+                                        AsyncImage(
+                                            model = coverUri,
+                                            contentDescription = "$name 커버",
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    } else {
+                                        Text(
+                                            text = symbol,
+                                            color = JokeboxColors.Primary,
+                                            fontSize = 42.sp
+                                        )
+                                    }
                                 }
 
                                 Spacer(

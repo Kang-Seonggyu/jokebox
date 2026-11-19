@@ -16,9 +16,12 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.Color
@@ -80,6 +83,8 @@ fun JokeboxApp() {
     var playCountRegistered by remember { mutableStateOf(false) }
 
     var showNowPlaying by remember { mutableStateOf(false) }
+    var showQueue by remember { mutableStateOf(false) }
+    var queueSongsForSheet by remember { mutableStateOf<List<Song>>(emptyList()) }
     var listenedDuration by remember { mutableLongStateOf(0L) }
 
     var selectedCategory by remember { mutableStateOf<String?>(null) }
@@ -612,34 +617,36 @@ fun JokeboxApp() {
             bottomBar = {
                 if (!showNowPlaying) {
                     Column(modifier = Modifier.navigationBarsPadding()) {
-                        selectedSong?.let { song ->
-                            MiniPlayer(
-                                song = song,
-                                isPlaying = isPlaying,
-                                currentPosition = currentPosition,
-                                totalDuration = totalDuration,
-                                onPlayPause = {
-                                    if (player.isPlaying) player.pause()
-                                    else player.play()
-                                },
-                                onPrevious = {
-                                    if (player.currentPosition > 3000L) {
-                                        player.seekTo(0L)
-                                    } else {
-                                        player.seekToPreviousMediaItem()
+                        MiniPlayer(
+                            song = selectedSong,
+                            isPlaying = isPlaying,
+                            onPlayPause = {
+                                if (player.isPlaying) player.pause()
+                                else player.play()
+                            },
+                            onPrevious = {
+                                if (player.currentPosition > 3000L) {
+                                    player.seekTo(0L)
+                                } else {
+                                    player.seekToPreviousMediaItem()
+                                }
+                            },
+                            onNext = {
+                                player.seekToNextMediaItem()
+                            },
+                            onExpand = {
+                                showNowPlaying = true
+                            },
+                            onQueueClick = {
+                                queueSongsForSheet = (0 until player.mediaItemCount)
+                                    .mapNotNull { index ->
+                                        val uri = player.getMediaItemAt(index)
+                                            .localConfiguration?.uri
+                                        songs.firstOrNull { it.uri == uri }
                                     }
-                                },
-                                onNext = {
-                                    player.seekToNextMediaItem()
-                                },
-                                onSeek = { position ->
-                                    player.seekTo(position)
-                                },
-                                onExpand = {
-                                    showNowPlaying = true
-                                },
-                            )
-                        }
+                                showQueue = true
+                            },
+                        )
                     }
                 }
             },
@@ -1247,8 +1254,54 @@ fun JokeboxApp() {
                 }
             }
         }
+
+        if (showQueue) {
+            AlertDialog(
+                onDismissRequest = { showQueue = false },
+                title = { Text("재생 대기열") },
+                text = {
+                    if (queueSongsForSheet.isEmpty()) {
+                        Text(
+                            text = "재생 대기열이 비어 있습니다.",
+                            color = JokeboxColors.TextSecondary,
+                        )
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.heightIn(max = 480.dp),
+                            contentPadding = PaddingValues(bottom = 16.dp),
+                        ) {
+                            itemsIndexed(
+                                items = queueSongsForSheet,
+                                key = { _, queuedSong -> queuedSong.id },
+                            ) { index, queuedSong ->
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        text = if (index == player.currentMediaItemIndex) "▶" else "",
+                                        color = JokeboxColors.Primary,
+                                        modifier = Modifier.width(20.dp),
+                                    )
+                                    Box(modifier = Modifier.weight(1f)) {
+                                        SongItem(song = queuedSong, compact = true) {
+                                            selectedSong = queuedSong
+                                            player.seekTo(index, 0L)
+                                            player.play()
+                                            showQueue = false
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showQueue = false }) {
+                        Text("닫기")
+                    }
+                },
+                containerColor = JokeboxColors.Surface,
+            )
+        }
     }
 }
-
-
-

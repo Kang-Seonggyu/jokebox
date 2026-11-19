@@ -1,7 +1,12 @@
 package com.jokebox.music
 
 import com.jokebox.music.ui.theme.JokeboxColors
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -9,16 +14,27 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material3.*
@@ -132,119 +148,250 @@ fun SongItem(
 
 @Composable
 fun MiniPlayer(
-    song: Song,
+    song: Song?,
     isPlaying: Boolean,
-    currentPosition: Long,
-    totalDuration: Long,
     onPlayPause: () -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
-    onSeek: (Long) -> Unit,
-    onExpand: () -> Unit
+    onExpand: () -> Unit,
+    onQueueClick: () -> Unit,
 ) {
-    Surface(
-        color = JokeboxColors.SurfaceVariant,
-        shape = RoundedCornerShape(16.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onExpand() }
-            .padding(horizontal = 12.dp, vertical = 8.dp)) {
-        if (song.albumArtUri != null) {
-            AsyncImage(
-                model = song.albumArtUri,
-                contentDescription = "Album Art",
-                modifier = Modifier
-                    .size(48.dp)
-                    .padding(end = 12.dp),
-                contentScale = ContentScale.Crop
-            )
-        } else {
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .background(
-                        JokeboxColors.Surface, RoundedCornerShape(10.dp)
-                    ), contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "♫", color = JokeboxColors.Primary, fontSize = 24.sp
-                )
-            }
-        }
-        Column(
-            modifier = Modifier.padding(14.dp)
-        ) {
-            // 곡 정보와 재생 버튼
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = song.title,
-                        color = JokeboxColors.TextPrimary,
-                        fontWeight = FontWeight.SemiBold
-                    )
+    val albumRotation = remember(song?.id) { Animatable(0f) }
 
-                    Text(
-                        text = song.artist, color = JokeboxColors.TextSecondary, fontSize = 12.sp
-                    )
-                }
-
-                Text(text = "⏮", color = JokeboxColors.TextPrimary, modifier = Modifier
-                    .clickable {
-                        onPrevious()
-                    }
-                    .padding(8.dp))
-
-                Text(
-                    text = if (isPlaying) "Ⅱ" else "▶",
-                    color = JokeboxColors.Primary,
-                    fontSize = 22.sp,
-                    modifier = Modifier
-                        .clickable {
-                            onPlayPause()
-                        }
-                        .padding(8.dp))
-
-                Text(text = "⏭", color = JokeboxColors.TextPrimary, modifier = Modifier
-                    .clickable {
-                        onNext()
-                    }
-                    .padding(8.dp))
-            }
-
-            // 재생 진행 바
-            Slider(
-                value = currentPosition.toFloat().coerceIn(
-                    0f, totalDuration.toFloat().coerceAtLeast(1f)
-                ),
-                onValueChange = {
-                    onSeek(it.toLong())
-                },
-                valueRange = 0f..totalDuration.toFloat().coerceAtLeast(1f),
-                enabled = totalDuration > 0L
-            )
-
-            // 현재 시간과 전체 시간
-            Row(
-                modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = formatTime(currentPosition),
-                    color = JokeboxColors.TextSecondary,
-                    fontSize = 11.sp
-                )
-
-                Text(
-                    text = formatTime(totalDuration),
-                    color = JokeboxColors.TextSecondary,
-                    fontSize = 11.sp
+    LaunchedEffect(song?.id, isPlaying) {
+        if (song?.albumArtUri != null && isPlaying) {
+            while (true) {
+                albumRotation.animateTo(
+                    targetValue = albumRotation.value + 360f,
+                    animationSpec = tween(durationMillis = 8_000, easing = LinearEasing),
                 )
             }
         }
     }
+
+    Surface(
+        color = JokeboxColors.SurfaceVariant,
+        shape = RoundedCornerShape(percent = 50),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .clickable(enabled = song != null, onClick = onExpand),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(64.dp)
+                .padding(horizontal = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(CircleShape)
+                    .background(JokeboxColors.Surface),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (song?.albumArtUri != null) {
+                    AsyncImage(
+                        model = song.albumArtUri,
+                        contentDescription = "Album Art",
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer { rotationZ = albumRotation.value },
+                        contentScale = ContentScale.Crop,
+                    )
+                } else {
+                    Text(
+                        text = "♫",
+                        color = JokeboxColors.Primary,
+                        fontSize = 22.sp,
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(10.dp))
+
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.Start,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Text(
+                    text = song?.title ?: "재생할 곡이 없습니다.",
+                    color = JokeboxColors.TextPrimary,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 13.sp,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Clip,
+                    textAlign = TextAlign.Start,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .basicMarquee(
+                            iterations = Int.MAX_VALUE,
+                            initialDelayMillis = 1_000,
+                        ),
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = song?.artist ?: "음악을 선택하세요.",
+                    color = JokeboxColors.TextSecondary,
+                    fontSize = 11.sp,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Clip,
+                    textAlign = TextAlign.Start,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .basicMarquee(
+                            iterations = Int.MAX_VALUE,
+                            initialDelayMillis = 1_000,
+                        ),
+                )
+            }
+
+            MiniPlayerControl(text = "⏮", enabled = song != null, onClick = onPrevious)
+            MiniPlayerPlayPauseControl(
+                isPlaying = isPlaying,
+                enabled = song != null,
+                onClick = onPlayPause,
+            )
+            MiniPlayerControl(text = "⏭", enabled = song != null, onClick = onNext)
+            MiniPlayerQueueControl(onClick = onQueueClick)
+        }
+    }
 }
 
+@Composable
+private fun MiniPlayerControl(
+    text: String,
+    enabled: Boolean = true,
+    color: Color = JokeboxColors.TextPrimary,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .size(38.dp)
+            .clip(CircleShape)
+            .clickable(enabled = enabled, onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            color = color.copy(alpha = if (enabled) 1f else 0.4f),
+            fontSize = 18.sp,
+        )
+    }
+}
+
+@Composable
+private fun MiniPlayerQueueControl(onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(38.dp)
+            .clip(CircleShape)
+            .clickable(onClick = onClick)
+            .semantics {
+                contentDescription = "재생 대기열"
+                role = Role.Button
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(modifier = Modifier.size(22.dp)) {
+            val color = JokeboxColors.TextPrimary
+            val unit = size.width / 24f
+            val strokeWidth = 2f * unit
+
+            drawLine(
+                color = color,
+                start = Offset(3f * unit, 6f * unit),
+                end = Offset(14f * unit, 6f * unit),
+                strokeWidth = strokeWidth,
+                cap = StrokeCap.Round,
+            )
+            drawLine(
+                color = color,
+                start = Offset(3f * unit, 10f * unit),
+                end = Offset(14f * unit, 10f * unit),
+                strokeWidth = strokeWidth,
+                cap = StrokeCap.Round,
+            )
+            drawLine(
+                color = color,
+                start = Offset(3f * unit, 14f * unit),
+                end = Offset(10f * unit, 14f * unit),
+                strokeWidth = strokeWidth,
+                cap = StrokeCap.Round,
+            )
+
+            val note = Path().apply {
+                moveTo(19f * unit, 5f * unit)
+                lineTo(23f * unit, 5f * unit)
+                lineTo(23f * unit, 7f * unit)
+                lineTo(21f * unit, 7f * unit)
+                lineTo(21f * unit, 17f * unit)
+                lineTo(19f * unit, 17f * unit)
+                close()
+            }
+            drawPath(path = note, color = color)
+            drawCircle(
+                color = color,
+                radius = 2.5f * unit,
+                center = Offset(17.5f * unit, 18f * unit),
+            )
+        }
+    }
+}
+
+@Composable
+private fun MiniPlayerPlayPauseControl(
+    isPlaying: Boolean,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    Box(
+        modifier = Modifier
+            .size(38.dp)
+            .clip(CircleShape)
+            .clickable(enabled = enabled, onClick = onClick)
+            .semantics {
+                contentDescription = if (isPlaying) "일시정지" else "재생"
+                role = Role.Button
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(modifier = Modifier.size(18.dp)) {
+            val color = JokeboxColors.Primary.copy(alpha = if (enabled) 1f else 0.4f)
+            if (isPlaying) {
+                val barWidth = size.width * 0.24f
+                val barHeight = size.height * 0.72f
+                val gap = size.width * 0.18f
+                val totalWidth = barWidth * 2 + gap
+                val startX = (size.width - totalWidth) / 2f
+                val startY = (size.height - barHeight) / 2f
+
+                drawRect(
+                    color = color,
+                    topLeft = Offset(startX, startY),
+                    size = Size(barWidth, barHeight),
+                )
+                drawRect(
+                    color = color,
+                    topLeft = Offset(startX + barWidth + gap, startY),
+                    size = Size(barWidth, barHeight),
+                )
+            } else {
+                val path = Path().apply {
+                    moveTo(size.width * 0.27f, size.height * 0.12f)
+                    lineTo(size.width * 0.82f, size.height * 0.5f)
+                    lineTo(size.width * 0.27f, size.height * 0.88f)
+                    close()
+                }
+                drawPath(path = path, color = color)
+            }
+        }
+    }
+}
 fun formatTime(milliseconds: Long): String {
     val totalSeconds = milliseconds / 1000
     val minutes = totalSeconds / 60

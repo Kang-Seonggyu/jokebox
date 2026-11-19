@@ -3,15 +3,22 @@ package com.jokebox.music
 import com.jokebox.music.ui.theme.JokeboxColors
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.material3.*
@@ -49,8 +56,14 @@ fun Header() {
 
 @Composable
 fun SongItem(
-    song: Song, onClick: () -> Unit
+    song: Song,
+    compact: Boolean = false,
+    onClick: () -> Unit,
 ) {
+    val rowPadding = if (compact) 8.dp else 14.dp
+    val artworkSize = if (compact) 40.dp else 48.dp
+    val artworkShape = RoundedCornerShape(if (compact) 8.dp else 10.dp)
+
     Surface(
         color = JokeboxColors.Surface,
         shape = RoundedCornerShape(14.dp),
@@ -59,14 +72,14 @@ fun SongItem(
             .clickable(onClick = onClick)
     ) {
         Row(
-            modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically
+            modifier = Modifier.padding(rowPadding), verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .size(48.dp)
-                    .background(
-                        JokeboxColors.SurfaceVariant, RoundedCornerShape(10.dp)
-                    ), contentAlignment = Alignment.Center
+                    .size(artworkSize)
+                    .clip(artworkShape)
+                    .background(JokeboxColors.SurfaceVariant),
+                contentAlignment = Alignment.Center
             ) {
                 if (song.albumArtUri != null) {
                     AsyncImage(
@@ -82,20 +95,31 @@ fun SongItem(
                 }
             }
 
-            Spacer(modifier = Modifier.width(14.dp))
+            Spacer(modifier = Modifier.width(if (compact) 10.dp else 14.dp))
 
-            Column(modifier = Modifier.weight(1f)) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.Center,
+            ) {
                 Text(
                     text = song.title,
                     color = JokeboxColors.TextPrimary,
                     fontWeight = FontWeight.SemiBold,
-                    fontSize = 14.sp
+                    fontSize = if (compact) 13.sp else 14.sp,
+                    lineHeight = if (compact) 14.sp else 15.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
 
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(2.dp))
 
                 Text(
-                    text = song.artist, color = JokeboxColors.TextSecondary, fontSize = 12.sp
+                    text = song.artist,
+                    color = JokeboxColors.TextSecondary,
+                    fontSize = if (compact) 11.sp else 12.sp,
+                    lineHeight = if (compact) 12.sp else 13.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
 
@@ -232,81 +256,154 @@ fun formatTime(milliseconds: Long): String {
 @Composable
 fun MusicContent(
     songs: List<Song>,
-    searchQuery: String,
-    onSearchQueryChange: (String) -> Unit,
-    onSongClick: (Song) -> Unit
+    onSongClick: (Song) -> Unit,
 ) {
-    val filteredSongs = songs.filter { song ->
-        song.title.contains(searchQuery, ignoreCase = true) || song.artist.contains(
-            searchQuery, ignoreCase = true
-        )
+    val songListState = rememberLazyListState()
+    val indexLetters = listOf("#") +
+        ('A'..'Z').map { it.toString() } +
+        listOf("ㄱ", "ㄴ", "ㄷ", "ㄹ", "ㅁ", "ㅂ", "ㅅ", "ㅇ", "ㅈ", "ㅊ", "ㅋ", "ㅌ", "ㅍ", "ㅎ")
+
+    fun getIndexKey(title: String): String {
+        val firstCharacter = title.firstOrNull { !it.isWhitespace() }?.uppercaseChar()
+            ?: return "#"
+
+        if (firstCharacter in '가'..'힣') {
+            val initials = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ"
+            val initialIndex = (firstCharacter.code - '가'.code) / 588
+            return when (initials[initialIndex]) {
+                'ㄲ' -> "ㄱ"
+                'ㄸ' -> "ㄷ"
+                'ㅃ' -> "ㅂ"
+                'ㅆ' -> "ㅅ"
+                'ㅉ' -> "ㅈ"
+                else -> initials[initialIndex].toString()
+            }
+        }
+
+        return when {
+            firstCharacter.isDigit() -> "#"
+            firstCharacter in 'A'..'Z' -> firstCharacter.toString()
+            else -> "#"
+        }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(JokeboxColors.Background)
-            .padding(10.dp, 8.dp, 10.dp, 24.dp)
+    var activeIndex by remember { mutableIntStateOf(-1) }
+    var isIndexTouching by remember { mutableStateOf(false) }
+    var touchFraction by remember { mutableFloatStateOf(0f) }
 
-    ) {
-        Spacer(modifier = Modifier.height(20.dp))
+    LaunchedEffect(activeIndex, songs) {
+        val letter = indexLetters.getOrNull(activeIndex) ?: return@LaunchedEffect
+        val targetIndex = songs.indexOfFirst { getIndexKey(it.title) == letter }
+        if (targetIndex >= 0) {
+            songListState.scrollToItem(targetIndex)
+        }
+    }
 
-        OutlinedTextField(
-            value = searchQuery,
-            onValueChange = onSearchQueryChange,
-            modifier = Modifier.fillMaxWidth(),
-            placeholder = {
-                Text("곡 또는 아티스트 검색")
-            },
-            singleLine = true,
-            leadingIcon = {
-                Text("⌕", fontSize = 24.sp)
-            },
-            trailingIcon = {
-                if (searchQuery.isNotEmpty()) {
-                    Text(text = "✕", modifier = Modifier
-                        .clickable {
-                            onSearchQueryChange("")
-                        }
-                        .padding(8.dp))
-                }
-            },
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = JokeboxColors.TextPrimary,
-                unfocusedTextColor = JokeboxColors.TextPrimary,
-                focusedBorderColor = JokeboxColors.Primary,
-                unfocusedBorderColor = JokeboxColors.SurfaceVariant,
-                cursorColor = JokeboxColors.Primary,
-                focusedPlaceholderColor = JokeboxColors.TextSecondary,
-                unfocusedPlaceholderColor = JokeboxColors.TextSecondary
+    if (songs.isEmpty()) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = "음악 파일이 없습니다.",
+                color = JokeboxColors.TextSecondary,
+                fontSize = 14.sp,
             )
-        )
-
-        Spacer(modifier = Modifier.height(20.dp))
-
-        when {
-            filteredSongs.isEmpty() -> {
-                Text(
-                    text = if (songs.isEmpty()) "음악 파일이 없습니다." else "검색 결과가 없습니다.",
-                    color = JokeboxColors.TextSecondary,
-                    fontSize = 14.sp,
-                )
+        }
+    } else {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(JokeboxColors.Background),
+        ) {
+            LazyColumn(
+                state = songListState,
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                items(songs, key = { it.id }) { song ->
+                    SongItem(song = song, compact = true) { onSongClick(song) }
+                }
             }
 
-            else -> {
-                Text(
-                    text = "${filteredSongs.size}곡",
-                    color = JokeboxColors.TextSecondary,
-                    fontSize = 14.sp,
-                )
+            BoxWithConstraints(
+                modifier = Modifier
+                    .width(28.dp)
+                    .fillMaxHeight()
+                    .pointerInput(indexLetters, songs) {
+                        val railHeight = size.height.toFloat().coerceAtLeast(1f)
 
-                Spacer(modifier = Modifier.height(12.dp))
+                        fun updateIndexAt(y: Float) {
+                            touchFraction = (y / railHeight).coerceIn(0f, 1f)
+                            activeIndex = (
+                                touchFraction * indexLetters.size
+                            ).toInt().coerceIn(indexLetters.indices)
+                        }
 
-                LazyColumn {
-                    items(filteredSongs) { song ->
-                        SongItem(
-                            song = song,
-                            onClick = { onSongClick(song) },
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            isIndexTouching = true
+                            try {
+                                updateIndexAt(down.position.y)
+
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull {
+                                        it.id == down.id
+                                    } ?: break
+                                    if (!change.pressed) break
+
+                                    updateIndexAt(change.position.y)
+                                    change.consume()
+                                }
+                            } finally {
+                                isIndexTouching = false
+                            }
+                        }
+                    },
+            ) {
+                val letterLineHeight = (maxHeight / indexLetters.size)
+                    .coerceAtMost(12.dp)
+                    .coerceAtLeast(8.dp)
+
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.SpaceEvenly,
+                ) {
+                    indexLetters.forEachIndexed { index, letter ->
+                        Text(
+                            text = letter,
+                            fontSize = (letterLineHeight.value * 0.8f).sp,
+                            lineHeight = letterLineHeight.value.sp,
+                            color = JokeboxColors.TextSecondary,
+                            modifier = Modifier.clickable {
+                                activeIndex = index
+                            },
+                        )
+                    }
+                }
+
+                if (isIndexTouching && activeIndex >= 0) {
+                    val tooltipHeight = 32.dp
+                    val tooltipY = (maxHeight * touchFraction - tooltipHeight / 2)
+                        .coerceIn(0.dp, (maxHeight - tooltipHeight).coerceAtLeast(0.dp))
+
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .offset(x = (-46).dp, y = tooltipY),
+                        color = JokeboxColors.Primary,
+                        shape = RoundedCornerShape(10.dp),
+                        shadowElevation = 6.dp,
+                    ) {
+                        Text(
+                            text = indexLetters[activeIndex],
+                            color = Color.Black,
+                            fontSize = 16.sp,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                         )
                     }
                 }
@@ -314,7 +411,6 @@ fun MusicContent(
         }
     }
 }
-
 @Composable
 fun NowPlayingContent(
     song: Song,

@@ -63,7 +63,6 @@ fun JokeboxApp() {
     }
 
     var selectedTab by remember { mutableStateOf("Music") }
-    var searchQuery by remember { mutableStateOf("") }
     var selectedSong by remember { mutableStateOf<Song?>(null) }
     var favoriteSongIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
 
@@ -716,14 +715,15 @@ fun JokeboxApp() {
                         Column(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(horizontal = 20.dp, vertical = 20.dp)
+                                .padding(
+                                    horizontal = if (tabs[page].first == "Music") 0.dp else 20.dp,
+                                    vertical = 8.dp,
+                                )
                         ) {
                             when (tabs[page].first) {
                         "Music" -> {
                             MusicContent(
                                 songs = songs,
-                                searchQuery = searchQuery,
-                                onSearchQueryChange = { searchQuery = it },
                                 onSongClick = { playSongFromCollection(songs, it) },
                             )
                         }
@@ -1238,8 +1238,6 @@ fun JokeboxApp() {
                         else -> {
                             MusicContent(
                                 songs = songs,
-                                searchQuery = searchQuery,
-                                onSearchQueryChange = { searchQuery = it },
                                 onSongClick = { playSongFromCollection(songs, it) },
                             )
                         }

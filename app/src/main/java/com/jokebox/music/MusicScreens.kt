@@ -48,47 +48,6 @@ fun Header() {
 }
 
 @Composable
-fun HomeContent(
-    songs: List<Song>, selectedSong: Song?, onSongClick: (Song) -> Unit
-) {
-    LazyColumn(
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        item {
-            Text(text = selectedSong?.let {
-                "Last selected: ${it.title}"
-            } ?: "No music played yet.", color = JokeboxColors.TextSecondary, fontSize = 13.sp)
-
-            Spacer(modifier = Modifier.height(20.dp))
-
-            Text(
-                text = "Home",
-                color = JokeboxColors.TextPrimary,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-
-            Spacer(modifier = Modifier.height(4.dp))
-        }
-
-        if (songs.isEmpty()) {
-            item {
-                Text(
-                    text = "No music files found.",
-                    color = JokeboxColors.TextSecondary,
-                    fontSize = 13.sp
-                )
-            }
-        } else {
-            items(songs) { song ->
-                SongItem(
-                    song = song, onClick = { onSongClick(song) })
-            }
-        }
-    }
-}
-
-@Composable
 fun SongItem(
     song: Song, onClick: () -> Unit
 ) {
@@ -271,14 +230,7 @@ fun formatTime(milliseconds: Long): String {
 }
 
 @Composable
-fun PlaceholderContent(message: String) {
-    Text(
-        text = message, color = JokeboxColors.TextSecondary, fontSize = 14.sp
-    )
-}
-
-@Composable
-fun SearchContent(
+fun MusicContent(
     songs: List<Song>,
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
@@ -297,13 +249,6 @@ fun SearchContent(
             .padding(10.dp, 8.dp, 10.dp, 24.dp)
 
     ) {
-        Text(
-            text = "Search",
-            color = JokeboxColors.TextPrimary,
-            fontSize = 28.sp,
-            fontWeight = FontWeight.Bold
-        )
-
         Spacer(modifier = Modifier.height(20.dp))
 
         OutlinedTextField(
@@ -311,7 +256,7 @@ fun SearchContent(
             onValueChange = onSearchQueryChange,
             modifier = Modifier.fillMaxWidth(),
             placeholder = {
-                Text("Search songs or artists...")
+                Text("곡 또는 아티스트 검색")
             },
             singleLine = true,
             leadingIcon = {
@@ -340,27 +285,19 @@ fun SearchContent(
         Spacer(modifier = Modifier.height(20.dp))
 
         when {
-            searchQuery.isBlank() -> {
-                Text(
-                    text = "Search your music library.",
-                    color = JokeboxColors.TextSecondary,
-                    fontSize = 14.sp
-                )
-            }
-
             filteredSongs.isEmpty() -> {
                 Text(
-                    text = "No results found.",
+                    text = if (songs.isEmpty()) "음악 파일이 없습니다." else "검색 결과가 없습니다.",
                     color = JokeboxColors.TextSecondary,
-                    fontSize = 14.sp
+                    fontSize = 14.sp,
                 )
             }
 
             else -> {
                 Text(
-                    text = "${filteredSongs.size} results",
+                    text = "${filteredSongs.size}곡",
                     color = JokeboxColors.TextSecondary,
-                    fontSize = 14.sp
+                    fontSize = 14.sp,
                 )
 
                 Spacer(modifier = Modifier.height(12.dp))
@@ -368,9 +305,9 @@ fun SearchContent(
                 LazyColumn {
                     items(filteredSongs) { song ->
                         SongItem(
-                            song = song, onClick = {
-                                onSongClick(song)
-                            })
+                            song = song,
+                            onClick = { onSongClick(song) },
+                        )
                     }
                 }
             }
@@ -593,3 +530,126 @@ fun NowPlayingContent(
         Spacer(modifier = Modifier.weight(1f))
     }
 }
+
+
+@Composable
+fun AlbumsContent(
+    albums: List<MusicAlbum>,
+    onAlbumClick: (MusicAlbum) -> Unit,
+) {
+    LazyColumn(
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        if (albums.isEmpty()) {
+            item {
+                Text(
+                    text = "앨범이 없습니다.",
+                    color = JokeboxColors.TextSecondary,
+                    fontSize = 14.sp,
+                )
+            }
+        } else {
+            items(albums, key = { it.id }) { album ->
+                MusicCollectionRow(
+                    title = album.title,
+                    subtitle = "${album.artist} · ${album.songs.size}곡",
+                    coverSong = album.songs.firstOrNull(),
+                    onClick = { onAlbumClick(album) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun ArtistsContent(
+    artists: Map<String, List<Song>>,
+    onArtistClick: (String) -> Unit,
+) {
+    LazyColumn(
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        if (artists.isEmpty()) {
+            item {
+                Text(
+                    text = "아티스트가 없습니다.",
+                    color = JokeboxColors.TextSecondary,
+                    fontSize = 14.sp,
+                )
+            }
+        } else {
+            items(artists.toList(), key = { it.first }) { (artist, artistSongs) ->
+                MusicCollectionRow(
+                    title = artist,
+                    subtitle = "${artistSongs.size}곡",
+                    coverSong = artistSongs.firstOrNull(),
+                    onClick = { onArtistClick(artist) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MusicCollectionRow(
+    title: String,
+    subtitle: String,
+    coverSong: Song?,
+    onClick: () -> Unit,
+) {
+    Surface(
+        color = JokeboxColors.Surface,
+        shape = RoundedCornerShape(14.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .background(
+                        JokeboxColors.SurfaceVariant,
+                        RoundedCornerShape(10.dp),
+                    ),
+                contentAlignment = Alignment.Center,
+            ) {
+                if (coverSong?.albumArtUri != null) {
+                    AsyncImage(
+                        model = coverSong.albumArtUri,
+                        contentDescription = "$title 커버",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                    )
+                } else {
+                    Text(
+                        text = "♫",
+                        color = JokeboxColors.Primary,
+                        fontSize = 26.sp,
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(14.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    color = JokeboxColors.TextPrimary,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 15.sp,
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = subtitle,
+                    color = JokeboxColors.TextSecondary,
+                    fontSize = 12.sp,
+                )
+            }
+        }
+    }
+}
+

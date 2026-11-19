@@ -15,7 +15,16 @@ data class Song(
     val id: Long,
     val uri: Uri,
     val albumArtUri: Uri?,
+    val albumId: Long,
+    val albumTitle: String,
     val dateAdded: Long,
+)
+
+data class MusicAlbum(
+    val id: Long,
+    val title: String,
+    val artist: String,
+    val songs: List<Song>,
 )
 
 data class MusicPlaylist(
@@ -34,7 +43,8 @@ suspend fun loadMusic(context: Context): List<Song> = withContext(Dispatchers.IO
         MediaStore.Audio.Media.ARTIST,
         MediaStore.Audio.Media.DURATION,
         MediaStore.Audio.Media.ALBUM_ID,
-        MediaStore.Audio.Media.DATE_ADDED
+        MediaStore.Audio.Media.ALBUM,
+        MediaStore.Audio.Media.DATE_ADDED,
     )
 
     val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
@@ -54,12 +64,15 @@ suspend fun loadMusic(context: Context): List<Song> = withContext(Dispatchers.IO
 
         val albumIdColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
 
+        val albumTitleColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM)
+
         val dateAddedColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_ADDED)
 
         while (cursor.moveToNext()) {
 
             val id = cursor.getLong(idColumn)
             val albumId = cursor.getLong(albumIdColumn)
+            val albumTitle = cursor.getString(albumTitleColumn) ?: "Unknown Album"
             val dateAdded = cursor.getLong(dateAddedColumn)
 
             val contentUri = ContentUris.withAppendedId(collection, id)
@@ -91,6 +104,8 @@ suspend fun loadMusic(context: Context): List<Song> = withContext(Dispatchers.IO
                     id = id,
                     uri = contentUri,
                     albumArtUri = albumArtUri,
+                    albumId = albumId,
+                    albumTitle = albumTitle,
                     dateAdded = dateAdded
                 )
             )

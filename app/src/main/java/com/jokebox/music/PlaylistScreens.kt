@@ -464,16 +464,6 @@ fun PlaylistsContent(
         ),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // 화면 제목
-        item {
-            Text(
-                text = "Playlists",
-                color = JokeboxColors.TextPrimary,
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-
         // 상단 고정 메뉴 4개
         item {
             Column(

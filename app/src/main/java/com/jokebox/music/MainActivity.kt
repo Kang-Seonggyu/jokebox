@@ -9,17 +9,20 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.activity.ComponentActivity
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.material3.*
 import androidx.compose.material3.AlertDialog
@@ -42,6 +45,7 @@ import kotlin.time.Duration.Companion.milliseconds
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
 
         setContent {
             JokeboxApp()
@@ -58,13 +62,15 @@ fun JokeboxApp() {
         )
     }
 
-    var selectedTab by remember { mutableStateOf("Home") }
+    var selectedTab by remember { mutableStateOf("Music") }
     var searchQuery by remember { mutableStateOf("") }
     var selectedSong by remember { mutableStateOf<Song?>(null) }
     var favoriteSongIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
 
     var playlists by remember { mutableStateOf<List<MusicPlaylist>>(emptyList()) }
     var selectedPlaylist by remember { mutableStateOf<MusicPlaylist?>(null) }
+    var selectedAlbum by remember { mutableStateOf<MusicAlbum?>(null) }
+    var selectedArtist by remember { mutableStateOf<String?>(null) }
     var favoritesLoaded by remember { mutableStateOf(false) }
 
     var recentlyPlayedSongIds by remember { mutableStateOf<List<Long>>(emptyList()) }
@@ -104,7 +110,7 @@ fun JokeboxApp() {
     }
 
     BackHandler(
-        enabled = showNowPlaying || selectedPlaylist != null || selectedCategory != null
+        enabled = showNowPlaying || selectedPlaylist != null || selectedCategory != null || selectedAlbum != null || selectedArtist != null
     ) {
         when {
             showNowPlaying -> {
@@ -117,6 +123,14 @@ fun JokeboxApp() {
 
             selectedCategory != null -> {
                 selectedCategory = null
+            }
+
+            selectedAlbum != null -> {
+                selectedAlbum = null
+            }
+
+            selectedArtist != null -> {
+                selectedArtist = null
             }
         }
     }
@@ -300,6 +314,20 @@ fun JokeboxApp() {
         }
     }
 
+    fun playSongFromCollection(collectionSongs: List<Song>, song: Song) {
+        val selectedIndex = collectionSongs.indexOfFirst { it.id == song.id }
+        if (selectedIndex >= 0) {
+            selectedSong = song
+            player.setMediaItems(
+                collectionSongs.map { MediaItem.fromUri(it.uri) },
+                selectedIndex,
+                0L,
+            )
+            player.prepare()
+            player.play()
+        }
+    }
+
     // 현재 재생 상태
     var isPlaying by remember {
         mutableStateOf(player.isPlaying)
@@ -402,6 +430,23 @@ fun JokeboxApp() {
     }
 
     // 플레이어 상태 감지
+    val albums = remember(songs) {
+        songs.groupBy { it.albumId }
+            .map { (albumId, albumSongs) ->
+                val firstSong = albumSongs.first()
+                MusicAlbum(
+                    id = albumId,
+                    title = firstSong.albumTitle,
+                    artist = firstSong.artist,
+                    songs = albumSongs,
+                )
+            }
+            .sortedBy { it.title.lowercase() }
+    }
+    val artists = remember(songs) {
+        songs.groupBy { it.artist }.toSortedMap()
+    }
+
     val currentSongsState = rememberUpdatedState(songs)
 
     DisposableEffect(player) {
@@ -508,10 +553,66 @@ fun JokeboxApp() {
             surface = JokeboxColors.Surface
         )
     ) {
+        val tabs = listOf(
+            "Music" to "음악",
+            "Playlists" to "재생목록",
+            "Albums" to "앨범",
+            "Artists" to "아티스트",
+        )
+
+        val pagerState = rememberPagerState(pageCount = { tabs.size })
+        val tabScope = rememberCoroutineScope()
+
+        LaunchedEffect(pagerState.currentPage) {
+            selectedTab = tabs[pagerState.currentPage].first
+        }
+
+        fun selectTab(tab: String) {
+            val page = tabs.indexOfFirst { it.first == tab }
+            if (page >= 0) {
+                tabScope.launch {
+                    pagerState.animateScrollToPage(page)
+                }
+            }
+            selectedPlaylist = null
+            selectedCategory = null
+            selectedAlbum = null
+            selectedArtist = null
+        }
+
         Scaffold(
-            containerColor = JokeboxColors.Background, bottomBar = {
+            containerColor = JokeboxColors.Background,
+            contentWindowInsets = WindowInsets.safeDrawing,
+            topBar = {
                 if (!showNowPlaying) {
-                    Column {
+                    Column(modifier = Modifier.statusBarsPadding()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp, vertical = 12.dp)
+                        ) {
+                            Header()
+                        }
+
+                        PrimaryTabRow(
+                            selectedTabIndex = pagerState.currentPage,
+                            containerColor = JokeboxColors.Surface,
+                            contentColor = JokeboxColors.TextPrimary,
+                        ) {
+                            tabs.forEach { (tab, label) ->
+                                Tab(
+                                    selected = selectedTab == tab,
+                                    onClick = { selectTab(tab) },
+                                    text = { Text(label) },
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            bottomBar = {
+                if (!showNowPlaying) {
+                    Column(modifier = Modifier.navigationBarsPadding()) {
                         selectedSong?.let { song ->
                             MiniPlayer(
                                 song = song,
@@ -537,45 +638,13 @@ fun JokeboxApp() {
                                 },
                                 onExpand = {
                                     showNowPlaying = true
-                                })
-                        }
-
-                        NavigationBar(
-                            containerColor = JokeboxColors.Surface,
-                            contentColor = JokeboxColors.TextPrimary
-                        ) {
-                            val tabs = listOf(
-                                "Home" to "⌂",
-                                "Search" to "⌕",
-                                "Playlists" to "♫",
-                                "Settings" to "⚙"
+                                },
                             )
-
-                            tabs.forEach { (tab, symbol) ->
-                                NavigationBarItem(
-                                    selected = selectedTab == tab,
-                                    onClick = {
-                                        selectedTab = tab
-                                        selectedPlaylist = null
-                                        selectedCategory = null
-                                    },
-                                    icon = {
-                                        Text(text = symbol, fontSize = 22.sp)
-                                    },
-                                    label = { Text(tab) },
-                                    colors = NavigationBarItemDefaults.colors(
-                                        selectedIconColor = JokeboxColors.Primary,
-                                        selectedTextColor = JokeboxColors.Primary,
-                                        indicatorColor = Color(0xFF33221F),
-                                        unselectedIconColor = JokeboxColors.TextSecondary,
-                                        unselectedTextColor = JokeboxColors.TextSecondary
-                                    )
-                                )
-                            }
                         }
                     }
                 }
-            }) { innerPadding ->
+            },
+        ) { innerPadding ->
 
             if (showNowPlaying && selectedSong != null) {
 
@@ -639,58 +708,24 @@ fun JokeboxApp() {
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(innerPadding)
-                        .padding(horizontal = 20.dp)
                 ) {
-                    Spacer(modifier = Modifier.height(24.dp))
-
-                    Header()
-
-                    Spacer(modifier = Modifier.height(28.dp))
-
-                    when (selectedTab) {
-                        "Home" -> {
-                            HomeContent(
-                                songs = songs, selectedSong = selectedSong, onSongClick = { song ->
-                                    selectedSong = song
-
-                                    val mediaItems = songs.map { item ->
-                                        MediaItem.fromUri(item.uri)
-                                    }
-
-                                    val selectedIndex = songs.indexOf(song)
-
-                                    if (selectedIndex >= 0) {
-                                        player.setMediaItems(
-                                            mediaItems, selectedIndex, 0L
-                                        )
-                                        player.prepare()
-                                        player.play()
-                                    }
-                                })
-                        }
-
-                        "Search" -> {
-                            SearchContent(
+                    HorizontalPager(
+                        state = pagerState,
+                        modifier = Modifier.fillMaxSize(),
+                    ) { page ->
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 20.dp, vertical = 20.dp)
+                        ) {
+                            when (tabs[page].first) {
+                        "Music" -> {
+                            MusicContent(
                                 songs = songs,
                                 searchQuery = searchQuery,
                                 onSearchQueryChange = { searchQuery = it },
-                                onSongClick = { song ->
-                                    selectedSong = song
-
-                                    val mediaItems = songs.map { item ->
-                                        MediaItem.fromUri(item.uri)
-                                    }
-
-                                    val selectedIndex = songs.indexOf(song)
-
-                                    if (selectedIndex >= 0) {
-                                        player.setMediaItems(
-                                            mediaItems, selectedIndex, 0L
-                                        )
-                                        player.prepare()
-                                        player.play()
-                                    }
-                                })
+                                onSongClick = { playSongFromCollection(songs, it) },
+                            )
                         }
 
                         "Playlists" -> {
@@ -1151,8 +1186,64 @@ fun JokeboxApp() {
                             }
                         }
 
+                        "Albums" -> {
+                            val album = selectedAlbum
+                            if (album == null) {
+                                AlbumsContent(
+                                    albums = albums,
+                                    onAlbumClick = { selectedAlbum = it },
+                                )
+                            } else {
+                                PlaylistDetailContent(
+                                    songs = album.songs,
+                                    title = album.title,
+                                    emptyMessage = "앨범에 곡이 없습니다.",
+                                    onBackClick = { selectedAlbum = null },
+                                    onPlayClick = { playCategorySongs(album.songs) },
+                                    onShuffleClick = {
+                                        playCategorySongs(album.songs, shuffle = true)
+                                    },
+                                    onSongClick = { song ->
+                                        playSongFromCollection(album.songs, song)
+                                    },
+                                )
+                            }
+                        }
+
+                        "Artists" -> {
+                            val artist = selectedArtist
+                            if (artist == null) {
+                                ArtistsContent(
+                                    artists = artists,
+                                    onArtistClick = { selectedArtist = it },
+                                )
+                            } else {
+                                val artistSongs = artists[artist].orEmpty()
+                                PlaylistDetailContent(
+                                    songs = artistSongs,
+                                    title = artist,
+                                    emptyMessage = "아티스트의 곡이 없습니다.",
+                                    onBackClick = { selectedArtist = null },
+                                    onPlayClick = { playCategorySongs(artistSongs) },
+                                    onShuffleClick = {
+                                        playCategorySongs(artistSongs, shuffle = true)
+                                    },
+                                    onSongClick = { song ->
+                                        playSongFromCollection(artistSongs, song)
+                                    },
+                                )
+                            }
+                        }
+
                         else -> {
-                            PlaceholderContent("Jokebox settings will appear here.")
+                            MusicContent(
+                                songs = songs,
+                                searchQuery = searchQuery,
+                                onSearchQueryChange = { searchQuery = it },
+                                onSongClick = { playSongFromCollection(songs, it) },
+                            )
+                        }
+                    }
                         }
                     }
                 }

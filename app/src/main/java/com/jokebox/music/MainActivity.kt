@@ -85,113 +85,93 @@ data class Song(
 )
 
 data class MusicPlaylist(
-    val id: Long,
-    val name: String,
-    val songIds: Set<Long> = emptySet(),
-    val coverUri: Uri? = null
+    val id: Long, val name: String, val songIds: Set<Long> = emptySet(), val coverUri: Uri? = null
 )
 
-private suspend fun loadMusic(context: Context): List<Song> =
-    withContext(Dispatchers.IO) {
+private suspend fun loadMusic(context: Context): List<Song> = withContext(Dispatchers.IO) {
 
-        val songs = mutableListOf<Song>()
+    val songs = mutableListOf<Song>()
 
-        val collection = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+    val collection = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
 
-        val projection = arrayOf(
-            MediaStore.Audio.Media._ID,
-            MediaStore.Audio.Media.TITLE,
-            MediaStore.Audio.Media.ARTIST,
-            MediaStore.Audio.Media.DURATION,
-            MediaStore.Audio.Media.ALBUM_ID,
-            MediaStore.Audio.Media.DATE_ADDED
-        )
+    val projection = arrayOf(
+        MediaStore.Audio.Media._ID,
+        MediaStore.Audio.Media.TITLE,
+        MediaStore.Audio.Media.ARTIST,
+        MediaStore.Audio.Media.DURATION,
+        MediaStore.Audio.Media.ALBUM_ID,
+        MediaStore.Audio.Media.DATE_ADDED
+    )
 
-        val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
-        val sortOrder = "${MediaStore.Audio.Media.TITLE} COLLATE NOCASE ASC"
+    val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
+    val sortOrder = "${MediaStore.Audio.Media.TITLE} COLLATE NOCASE ASC"
 
-        context.contentResolver.query(
-            collection,
-            projection,
-            selection,
-            null,
-            sortOrder
-        )?.use { cursor ->
+    context.contentResolver.query(
+        collection, projection, selection, null, sortOrder
+    )?.use { cursor ->
 
-            val idColumn =
-                cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
+        val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
 
-            val titleColumn =
-                cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
+        val titleColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
 
-            val artistColumn =
-                cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
+        val artistColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
 
-            val durationColumn =
-                cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
+        val durationColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
 
-            val albumIdColumn =
-                cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
+        val albumIdColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
 
-            val dateAddedColumn =
-                cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_ADDED)
+        val dateAddedColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_ADDED)
 
-            while (cursor.moveToNext()) {
+        while (cursor.moveToNext()) {
 
-                val id = cursor.getLong(idColumn)
-                val albumId = cursor.getLong(albumIdColumn)
-                val dateAdded = cursor.getLong(dateAddedColumn)
+            val id = cursor.getLong(idColumn)
+            val albumId = cursor.getLong(albumIdColumn)
+            val dateAdded = cursor.getLong(dateAddedColumn)
 
-                val contentUri =
-                    ContentUris.withAppendedId(collection, id)
+            val contentUri = ContentUris.withAppendedId(collection, id)
 
-                val albumArtUri = if (albumId > 0) {
-                    ContentUris.withAppendedId(
-                        Uri.parse("content://media/external/audio/albumart"),
-                        albumId
-                    )
-                } else {
-                    null
-                }
-
-                val title =
-                    cursor.getString(titleColumn) ?: "Unknown"
-
-                val artist =
-                    cursor.getString(artistColumn) ?: "Unknown Artist"
-
-                val duration =
-                    cursor.getLong(durationColumn)
-
-                if (duration <= 0L) continue
-
-                val minutes = duration / 1000 / 60
-                val seconds = (duration / 1000) % 60
-
-                songs.add(
-                    Song(
-                        title = title,
-                        artist = artist,
-                        duration = "%d:%02d".format(minutes, seconds),
-                        id = id,
-                        uri = contentUri,
-                        albumArtUri = albumArtUri,
-                        dateAdded = dateAdded
-                    )
+            val albumArtUri = if (albumId > 0) {
+                ContentUris.withAppendedId(
+                    Uri.parse("content://media/external/audio/albumart"), albumId
                 )
+            } else {
+                null
             }
-        }
 
-        songs
+            val title = cursor.getString(titleColumn) ?: "Unknown"
+
+            val artist = cursor.getString(artistColumn) ?: "Unknown Artist"
+
+            val duration = cursor.getLong(durationColumn)
+
+            if (duration <= 0L) continue
+
+            val minutes = duration / 1000 / 60
+            val seconds = (duration / 1000) % 60
+
+            songs.add(
+                Song(
+                    title = title,
+                    artist = artist,
+                    duration = "%d:%02d".format(minutes, seconds),
+                    id = id,
+                    uri = contentUri,
+                    albumArtUri = albumArtUri,
+                    dateAdded = dateAdded
+                )
+            )
+        }
     }
+
+    songs
+}
 
 @Composable
 fun JokeboxApp() {
     val context = androidx.compose.ui.platform.LocalContext.current
     val categoryCoverPrefs = remember {
         context.getSharedPreferences(
-            "jokebox_preferences",
-            android.content.Context.MODE_PRIVATE
+            "jokebox_preferences", android.content.Context.MODE_PRIVATE
         )
     }
 
@@ -243,14 +223,10 @@ fun JokeboxApp() {
     var categoryCoverUris by remember {
         mutableStateOf(
             listOf(
-                "Favorites",
-                "Recently Added",
-                "Recently Played",
-                "Most Played"
+                "Favorites", "Recently Added", "Recently Played", "Most Played"
             ).mapNotNull { key ->
                 val savedUri = categoryCoverPrefs.getString(
-                    "category_cover_$key",
-                    null
+                    "category_cover_$key", null
                 )
 
                 if (savedUri != null) {
@@ -263,9 +239,7 @@ fun JokeboxApp() {
     }
 
     BackHandler(
-        enabled = showNowPlaying ||
-                selectedPlaylist != null ||
-                selectedCategory != null
+        enabled = showNowPlaying || selectedPlaylist != null || selectedCategory != null
     ) {
         when {
             showNowPlaying -> {
@@ -286,51 +260,40 @@ fun JokeboxApp() {
     // 앱 실행 시 저장된 즐겨찾기 불러오기
     LaunchedEffect(Unit) {
         val preferences = context.getSharedPreferences(
-            "jokebox_preferences",
-            0
+            "jokebox_preferences", 0
         )
 
-        favoriteSongIds = preferences
-            .getStringSet("favorite_song_ids", emptySet())
-            ?.mapNotNull { it.toLongOrNull() }
-            ?.toSet()
-            ?: emptySet()
+        favoriteSongIds = preferences.getStringSet("favorite_song_ids", emptySet())
+            ?.mapNotNull { it.toLongOrNull() }?.toSet() ?: emptySet()
 
         favoritesLoaded = true
     }
     LaunchedEffect(Unit) {
         val prefs = context.getSharedPreferences(
-            "jokebox_preferences",
-            android.content.Context.MODE_PRIVATE
+            "jokebox_preferences", android.content.Context.MODE_PRIVATE
         )
 
         val savedCounts = prefs.getString(
-            "play_counts",
-            ""
+            "play_counts", ""
         )
 
-        playCounts = savedCounts
-            ?.split(",")
-            ?.mapNotNull { entry ->
-                val parts = entry.split(":")
-                if (parts.size == 2) {
-                    val id = parts[0].toLongOrNull()
-                    val count = parts[1].toIntOrNull()
+        playCounts = savedCounts?.split(",")?.mapNotNull { entry ->
+            val parts = entry.split(":")
+            if (parts.size == 2) {
+                val id = parts[0].toLongOrNull()
+                val count = parts[1].toIntOrNull()
 
-                    if (id != null && count != null) {
-                        id to count
-                    } else null
+                if (id != null && count != null) {
+                    id to count
                 } else null
-            }
-            ?.toMap()
-            ?: emptyMap()
+            } else null
+        }?.toMap() ?: emptyMap()
 
         playCountsLoaded = true
     }
     LaunchedEffect(Unit) {
         val prefs = context.getSharedPreferences(
-            "jokebox_preferences",
-            Context.MODE_PRIVATE
+            "jokebox_preferences", Context.MODE_PRIVATE
         )
 
         val savedData = prefs.getString("playlists", null)
@@ -389,63 +352,49 @@ fun JokeboxApp() {
             }
 
             val prefs = context.getSharedPreferences(
-                "jokebox_preferences",
-                Context.MODE_PRIVATE
+                "jokebox_preferences", Context.MODE_PRIVATE
             )
 
-            prefs.edit()
-                .putString("playlists", jsonArray.toString())
-                .apply()
+            prefs.edit().putString("playlists", jsonArray.toString()).apply()
         }
     }
 
     LaunchedEffect(playCounts, playCountsLoaded) {
         if (playCountsLoaded) {
             val prefs = context.getSharedPreferences(
-                "jokebox_preferences",
-                android.content.Context.MODE_PRIVATE
+                "jokebox_preferences", android.content.Context.MODE_PRIVATE
             )
 
             val savedCounts = playCounts.entries.joinToString(",") {
                 "${it.key}:${it.value}"
             }
 
-            prefs.edit()
-                .putString("play_counts", savedCounts)
-                .apply()
+            prefs.edit().putString("play_counts", savedCounts).apply()
         }
     }
     LaunchedEffect(recentlyPlayedSongIds, recentlyPlayedLoaded) {
         if (recentlyPlayedLoaded) {
             val prefs = context.getSharedPreferences(
-                "jokebox_preferences",
-                android.content.Context.MODE_PRIVATE
+                "jokebox_preferences", android.content.Context.MODE_PRIVATE
             )
 
-            prefs.edit()
-                .putString(
-                    "recently_played_song_ids",
-                    recentlyPlayedSongIds.joinToString(",")
-                )
-                .apply()
+            prefs.edit().putString(
+                "recently_played_song_ids", recentlyPlayedSongIds.joinToString(",")
+            ).apply()
         }
     }
 
     LaunchedEffect(Unit) {
         val prefs = context.getSharedPreferences(
-            "jokebox_preferences",
-            android.content.Context.MODE_PRIVATE
+            "jokebox_preferences", android.content.Context.MODE_PRIVATE
         )
 
         val savedIds = prefs.getString(
-            "recently_played_song_ids",
-            ""
+            "recently_played_song_ids", ""
         )
 
-        recentlyPlayedSongIds = savedIds
-            ?.split(",")
-            ?.mapNotNull { it.toLongOrNull() }
-            ?: emptyList()
+        recentlyPlayedSongIds =
+            savedIds?.split(",")?.mapNotNull { it.toLongOrNull() } ?: emptyList()
 
         recentlyPlayedLoaded = true
     }
@@ -454,16 +403,12 @@ fun JokeboxApp() {
     LaunchedEffect(favoriteSongIds, favoritesLoaded) {
         if (favoritesLoaded) {
             val preferences = context.getSharedPreferences(
-                "jokebox_preferences",
-                0
+                "jokebox_preferences", 0
             )
 
-            preferences.edit()
-                .putStringSet(
-                    "favorite_song_ids",
-                    favoriteSongIds.map { it.toString() }.toSet()
-                )
-                .apply()
+            preferences.edit().putStringSet(
+                "favorite_song_ids", favoriteSongIds.map { it.toString() }.toSet()
+            ).apply()
         }
     }
 
@@ -502,8 +447,7 @@ fun JokeboxApp() {
     var hasAudioPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(
-                context,
-                audioPermission
+                context, audioPermission
             ) == PackageManager.PERMISSION_GRANTED
         )
     }
@@ -542,8 +486,7 @@ fun JokeboxApp() {
 
             try {
                 context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
                 )
             } catch (_: Exception) {
             }
@@ -555,19 +498,14 @@ fun JokeboxApp() {
         contract = ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         if (uri != null && pendingCategoryCoverKey != null) {
-            categoryCoverUris =
-                categoryCoverUris + (pendingCategoryCoverKey!! to uri)
-            categoryCoverPrefs.edit()
-                .putString(
-                    "category_cover_${pendingCategoryCoverKey!!}",
-                    uri.toString()
-                )
-                .apply()
+            categoryCoverUris = categoryCoverUris + (pendingCategoryCoverKey!! to uri)
+            categoryCoverPrefs.edit().putString(
+                "category_cover_${pendingCategoryCoverKey!!}", uri.toString()
+            ).apply()
 
             try {
                 context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
                 )
             } catch (_: Exception) {
             }
@@ -590,12 +528,9 @@ fun JokeboxApp() {
             }
 
             override fun onMediaItemTransition(
-                mediaItem: MediaItem?,
-                reason: Int
+                mediaItem: MediaItem?, reason: Int
             ) {
-                val currentUri = player.currentMediaItem
-                    ?.localConfiguration
-                    ?.uri
+                val currentUri = player.currentMediaItem?.localConfiguration?.uri
 
                 val currentSong = currentSongsState.value.find {
                     it.uri == currentUri
@@ -609,12 +544,10 @@ fun JokeboxApp() {
                     playCountRegistered = false
 
                     // 최근 재생 기록 갱신 (최대 100곡)
-                    recentlyPlayedSongIds = (
-                            listOf(currentSong.id) +
-                                    recentlyPlayedSongIds.filterNot {
-                                        it == currentSong.id
-                                    }
-                            ).take(100)
+                    recentlyPlayedSongIds =
+                        (listOf(currentSong.id) + recentlyPlayedSongIds.filterNot {
+                            it == currentSong.id
+                        }).take(100)
 
                     // todos: 재생 횟수 증가
                 }
@@ -656,9 +589,7 @@ fun JokeboxApp() {
             }
 
             // 현재 재생 중인 곡을 화면에 반영
-            val currentUri = player.currentMediaItem
-                ?.localConfiguration
-                ?.uri
+            val currentUri = player.currentMediaItem?.localConfiguration?.uri
 
             val currentSong = songs.find { it.uri == currentUri }
 
@@ -667,11 +598,7 @@ fun JokeboxApp() {
             }
 
             // 실제 재생 중일 때만 시간 누적
-            if (
-                player.isPlaying &&
-                selectedSong != null &&
-                !playCountRegistered
-            ) {
+            if (player.isPlaying && selectedSong != null && !playCountRegistered) {
                 listenedDuration += 500L
 
                 // 누적 재생 시간이 30초 이상이면 카운트
@@ -698,8 +625,7 @@ fun JokeboxApp() {
         )
     ) {
         Scaffold(
-            containerColor = JokeboxColors.Background,
-            bottomBar = {
+            containerColor = JokeboxColors.Background, bottomBar = {
                 if (!showNowPlaying) {
                     Column {
                         selectedSong?.let { song ->
@@ -727,8 +653,7 @@ fun JokeboxApp() {
                                 },
                                 onExpand = {
                                     showNowPlaying = true
-                                }
-                            )
+                                })
                         }
 
                         NavigationBar(
@@ -766,8 +691,7 @@ fun JokeboxApp() {
                         }
                     }
                 }
-            }
-        ) { innerPadding ->
+            }) { innerPadding ->
 
             if (showNowPlaying && selectedSong != null) {
 
@@ -823,8 +747,7 @@ fun JokeboxApp() {
                         } else {
                             favoriteSongIds + songId
                         }
-                    }
-                )
+                    })
 
             } else {
 
@@ -843,9 +766,7 @@ fun JokeboxApp() {
                     when (selectedTab) {
                         "Home" -> {
                             HomeContent(
-                                songs = songs,
-                                selectedSong = selectedSong,
-                                onSongClick = { song ->
+                                songs = songs, selectedSong = selectedSong, onSongClick = { song ->
                                     selectedSong = song
 
                                     val mediaItems = songs.map { item ->
@@ -856,15 +777,12 @@ fun JokeboxApp() {
 
                                     if (selectedIndex >= 0) {
                                         player.setMediaItems(
-                                            mediaItems,
-                                            selectedIndex,
-                                            0L
+                                            mediaItems, selectedIndex, 0L
                                         )
                                         player.prepare()
                                         player.play()
                                     }
-                                }
-                            )
+                                })
                         }
 
                         "Search" -> {
@@ -883,15 +801,12 @@ fun JokeboxApp() {
 
                                     if (selectedIndex >= 0) {
                                         player.setMediaItems(
-                                            mediaItems,
-                                            selectedIndex,
-                                            0L
+                                            mediaItems, selectedIndex, 0L
                                         )
                                         player.prepare()
                                         player.play()
                                     }
-                                }
-                            )
+                                })
                         }
 
                         "Playlists" -> {
@@ -914,9 +829,7 @@ fun JokeboxApp() {
                                             selectedSong = song
 
                                             player.setMediaItems(
-                                                mediaItems,
-                                                selectedIndex,
-                                                0L
+                                                mediaItems, selectedIndex, 0L
                                             )
                                             player.prepare()
                                             player.play()
@@ -962,8 +875,7 @@ fun JokeboxApp() {
                                         }
 
                                         categoryCoverPrefs.edit()
-                                            .putString("playlists", jsonArray.toString())
-                                            .apply()
+                                            .putString("playlists", jsonArray.toString()).apply()
                                     },
                                     onPlayClick = {
                                         if (playlistSongs.isNotEmpty()) {
@@ -1004,117 +916,106 @@ fun JokeboxApp() {
                                                 ActivityResultContracts.PickVisualMedia.ImageOnly
                                             )
                                         )
-                                    }
-                                )
+                                    })
 
                                 if (showEditPlaylistDialog && selectedPlaylist != null) {
                                     var editedPlaylistName by remember(selectedPlaylist!!.id) {
                                         mutableStateOf(selectedPlaylist!!.name)
                                     }
 
-                                    AlertDialog(
-                                        onDismissRequest = {
-                                            showEditPlaylistDialog = false
-                                        },
-                                        title = {
-                                            Text("Edit Playlist")
-                                        },
-                                        text = {
-                                            OutlinedTextField(
-                                                value = editedPlaylistName,
-                                                onValueChange = {
-                                                    editedPlaylistName = it
-                                                },
-                                                label = {
-                                                    Text("Playlist Name")
-                                                },
-                                                singleLine = true
-                                            )
-                                        },
-                                        confirmButton = {
-                                            TextButton(
-                                                onClick = {
-                                                    val updatedPlaylist = selectedPlaylist!!.copy(
-                                                        name = editedPlaylistName.trim()
-                                                    )
+                                    AlertDialog(onDismissRequest = {
+                                        showEditPlaylistDialog = false
+                                    }, title = {
+                                        Text("Edit Playlist")
+                                    }, text = {
+                                        OutlinedTextField(
+                                            value = editedPlaylistName,
+                                            onValueChange = {
+                                                editedPlaylistName = it
+                                            },
+                                            label = {
+                                                Text("Playlist Name")
+                                            },
+                                            singleLine = true
+                                        )
+                                    }, confirmButton = {
+                                        TextButton(
+                                            onClick = {
+                                                val updatedPlaylist = selectedPlaylist!!.copy(
+                                                    name = editedPlaylistName.trim()
+                                                )
 
-                                                    playlists = playlists.map { playlist ->
-                                                        if (playlist.id == updatedPlaylist.id) {
-                                                            updatedPlaylist
-                                                        } else {
-                                                            playlist
-                                                        }
+                                                playlists = playlists.map { playlist ->
+                                                    if (playlist.id == updatedPlaylist.id) {
+                                                        updatedPlaylist
+                                                    } else {
+                                                        playlist
                                                     }
+                                                }
 
-                                                    selectedPlaylist = updatedPlaylist
+                                                selectedPlaylist = updatedPlaylist
 
-                                                    val jsonArray = JSONArray()
-                                                    playlists.forEach { playlist ->
-                                                        val jsonObject = JSONObject().apply {
-                                                            put("id", playlist.id)
-                                                            put("name", playlist.name)
-                                                            put("songIds", JSONArray(playlist.songIds.toList()))
-                                                            put("coverUri", playlist.coverUri?.toString())
-                                                        }
-                                                        jsonArray.put(jsonObject)
+                                                val jsonArray = JSONArray()
+                                                playlists.forEach { playlist ->
+                                                    val jsonObject = JSONObject().apply {
+                                                        put("id", playlist.id)
+                                                        put("name", playlist.name)
+                                                        put(
+                                                            "songIds",
+                                                            JSONArray(playlist.songIds.toList())
+                                                        )
+                                                        put(
+                                                            "coverUri",
+                                                            playlist.coverUri?.toString()
+                                                        )
                                                     }
-
-                                                    categoryCoverPrefs.edit()
-                                                        .putString("playlists", jsonArray.toString())
-                                                        .apply()
-
-                                                    showEditPlaylistDialog = false
+                                                    jsonArray.put(jsonObject)
                                                 }
-                                            ) {
-                                                Text("Save")
-                                            }
-                                        },
-                                        dismissButton = {
-                                            TextButton(
-                                                onClick = {
-                                                    showEditPlaylistDialog = false
-                                                }
-                                            ) {
-                                                Text("Cancel")
-                                            }
+
+                                                categoryCoverPrefs.edit().putString(
+                                                    "playlists", jsonArray.toString()
+                                                ).apply()
+
+                                                showEditPlaylistDialog = false
+                                            }) {
+                                            Text("Save")
                                         }
-                                    )
+                                    }, dismissButton = {
+                                        TextButton(
+                                            onClick = {
+                                                showEditPlaylistDialog = false
+                                            }) {
+                                            Text("Cancel")
+                                        }
+                                    })
                                 }
                                 if (showDeletePlaylistDialog) {
-                                    AlertDialog(
-                                        onDismissRequest = {
-                                            showDeletePlaylistDialog = false
-                                        },
-                                        title = {
-                                            Text("재생목록 삭제")
-                                        },
-                                        text = {
-                                            Text(" '${selectedPlaylist?.name}' 재생목록을 삭제하시겠습니까?\n삭제하면 복구할 수 없습니다.")
-                                        },
-                                        confirmButton = {
-                                            TextButton(
-                                                onClick = {
-                                                    playlists = playlists.filter {
-                                                        it.id != selectedPlaylist?.id
-                                                    }
-                                                    selectedPlaylist = null
-                                                    selectedTab = "Playlists"
-                                                    showDeletePlaylistDialog = false
+                                    AlertDialog(onDismissRequest = {
+                                        showDeletePlaylistDialog = false
+                                    }, title = {
+                                        Text("재생목록 삭제")
+                                    }, text = {
+                                        Text(" '${selectedPlaylist?.name}' 재생목록을 삭제하시겠습니까?\n삭제하면 복구할 수 없습니다.")
+                                    }, confirmButton = {
+                                        TextButton(
+                                            onClick = {
+                                                playlists = playlists.filter {
+                                                    it.id != selectedPlaylist?.id
                                                 }
-                                            ) {
-                                                Text("삭제", color = Color.Red)
-                                            }
-                                        },
-                                        dismissButton = {
-                                            TextButton(
-                                                onClick = {
-                                                    showDeletePlaylistDialog = false
-                                                }
-                                            ) {
-                                                Text("취소")
-                                            }
+                                                selectedPlaylist = null
+                                                selectedTab = "Playlists"
+                                                showDeletePlaylistDialog = false
+                                            }) {
+                                            Text("삭제", color = Color.Red)
                                         }
-                                    )
+                                    }, dismissButton = {
+                                        TextButton(
+                                            onClick = {
+                                                showDeletePlaylistDialog = false
+                                            }) {
+                                            Text("취소")
+                                        }
+                                    })
                                 }
                             } else if (selectedCategory == null) {
                                 PlaylistsContent(
@@ -1138,14 +1039,14 @@ fun JokeboxApp() {
                             } else {
                                 when (selectedCategory) {
                                     "최근에 추가한 곡" -> {
-                                        val oneMonthAgo = java.time.LocalDateTime.now()
-                                            .minusMonths(1)
-                                            .atZone(java.time.ZoneId.systemDefault())
-                                            .toEpochSecond()
+                                        val oneMonthAgo =
+                                            java.time.LocalDateTime.now().minusMonths(1)
+                                                .atZone(java.time.ZoneId.systemDefault())
+                                                .toEpochSecond()
 
-                                        val recentSongs = songs
-                                            .filter { it.dateAdded >= oneMonthAgo }
-                                            .sortedByDescending { it.dateAdded }
+                                        val recentSongs =
+                                            songs.filter { it.dateAdded >= oneMonthAgo }
+                                                .sortedByDescending { it.dateAdded }
 
                                         PlaylistDetailContent(
                                             songs = recentSongs,
@@ -1158,9 +1059,7 @@ fun JokeboxApp() {
 
                                                 if (selectedIndex >= 0) {
                                                     player.setMediaItems(
-                                                        mediaItems,
-                                                        selectedIndex,
-                                                        0L
+                                                        mediaItems, selectedIndex, 0L
                                                     )
                                                     player.prepare()
                                                     player.play()
@@ -1180,21 +1079,23 @@ fun JokeboxApp() {
                                                 )
                                             },
                                             onResetCoverClick = {
-                                                categoryCoverUris = categoryCoverUris - "Recently Added"
+                                                categoryCoverUris =
+                                                    categoryCoverUris - "Recently Added"
 
                                                 categoryCoverPrefs.edit()
-                                                    .remove("category_cover_Recently Added")
-                                                    .apply()
+                                                    .remove("category_cover_Recently Added").apply()
                                             },
                                             title = "최근에 추가한 곡",
                                             allSongs = songs,
                                         )
 
                                     }
+
                                     "최근 재생한 곡" -> {
-                                        val recentlyPlayedSongs = recentlyPlayedSongIds.mapNotNull { id ->
-                                            songs.find { it.id == id }
-                                        }
+                                        val recentlyPlayedSongs =
+                                            recentlyPlayedSongIds.mapNotNull { id ->
+                                                songs.find { it.id == id }
+                                            }
 
                                         PlaylistDetailContent(
                                             songs = recentlyPlayedSongs,
@@ -1207,9 +1108,7 @@ fun JokeboxApp() {
 
                                                 if (selectedIndex >= 0) {
                                                     player.setMediaItems(
-                                                        mediaItems,
-                                                        selectedIndex,
-                                                        0L
+                                                        mediaItems, selectedIndex, 0L
                                                     )
                                                     player.prepare()
                                                     player.play()
@@ -1228,7 +1127,8 @@ fun JokeboxApp() {
                                                 )
                                             },
                                             onResetCoverClick = {
-                                                categoryCoverUris = categoryCoverUris - "Recently Played"
+                                                categoryCoverUris =
+                                                    categoryCoverUris - "Recently Played"
                                                 categoryCoverPrefs.edit()
                                                     .remove("category_cover_Recently Played")
                                                     .apply()
@@ -1237,13 +1137,13 @@ fun JokeboxApp() {
                                             allSongs = songs,
                                         )
                                     }
+
                                     "많이 재생한 곡" -> {
-                                        val mostPlayedSongs = playCounts.entries
-                                            .sortedByDescending { it.value }
-                                            .take(100)
-                                            .mapNotNull { entry ->
-                                                songs.find { it.id == entry.key }
-                                            }
+                                        val mostPlayedSongs =
+                                            playCounts.entries.sortedByDescending { it.value }
+                                                .take(100).mapNotNull { entry ->
+                                                    songs.find { it.id == entry.key }
+                                                }
 
                                         PlaylistDetailContent(
                                             songs = mostPlayedSongs,
@@ -1256,9 +1156,7 @@ fun JokeboxApp() {
 
                                                 if (selectedIndex >= 0) {
                                                     player.setMediaItems(
-                                                        mediaItems,
-                                                        selectedIndex,
-                                                        0L
+                                                        mediaItems, selectedIndex, 0L
                                                     )
                                                     player.prepare()
                                                     player.play()
@@ -1277,15 +1175,16 @@ fun JokeboxApp() {
                                                 )
                                             },
                                             onResetCoverClick = {
-                                                categoryCoverUris = categoryCoverUris - "Most Played"
+                                                categoryCoverUris =
+                                                    categoryCoverUris - "Most Played"
                                                 categoryCoverPrefs.edit()
-                                                    .remove("category_cover_Most Played")
-                                                    .apply()
+                                                    .remove("category_cover_Most Played").apply()
                                             },
                                             title = "많이 재생한 곡",
                                             allSongs = songs,
                                         )
                                     }
+
                                     "좋아요 표시한 곡" -> {
                                         PlaylistDetailContent(
                                             songs = songs.filter { it.id in favoriteSongIds },
@@ -1298,9 +1197,7 @@ fun JokeboxApp() {
 
                                                 if (selectedIndex >= 0) {
                                                     player.setMediaItems(
-                                                        mediaItems,
-                                                        selectedIndex,
-                                                        0L
+                                                        mediaItems, selectedIndex, 0L
                                                     )
                                                     player.prepare()
                                                     player.play()
@@ -1324,8 +1221,7 @@ fun JokeboxApp() {
                                             onResetCoverClick = {
                                                 categoryCoverUris = categoryCoverUris - "Favorites"
                                                 categoryCoverPrefs.edit()
-                                                    .remove("category_cover_Favorites")
-                                                    .apply()
+                                                    .remove("category_cover_Favorites").apply()
                                             },
                                         )
                                     }
@@ -1389,30 +1285,22 @@ fun Header() {
         }
 
         Text(
-            text = "♫",
-            fontSize = 28.sp,
-            color = JokeboxColors.Primary
+            text = "♫", fontSize = 28.sp, color = JokeboxColors.Primary
         )
     }
 }
 
 @Composable
 fun HomeContent(
-    songs: List<Song>,
-    selectedSong: Song?,
-    onSongClick: (Song) -> Unit
+    songs: List<Song>, selectedSong: Song?, onSongClick: (Song) -> Unit
 ) {
     LazyColumn(
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         item {
-            Text(
-                text = selectedSong?.let {
-                    "Last selected: ${it.title}"
-                } ?: "No music played yet.",
-                color = JokeboxColors.TextSecondary,
-                fontSize = 13.sp
-            )
+            Text(text = selectedSong?.let {
+                "Last selected: ${it.title}"
+            } ?: "No music played yet.", color = JokeboxColors.TextSecondary, fontSize = 13.sp)
 
             Spacer(modifier = Modifier.height(20.dp))
 
@@ -1437,9 +1325,7 @@ fun HomeContent(
         } else {
             items(songs) { song ->
                 SongItem(
-                    song = song,
-                    onClick = { onSongClick(song) }
-                )
+                    song = song, onClick = { onSongClick(song) })
             }
         }
     }
@@ -1447,8 +1333,7 @@ fun HomeContent(
 
 @Composable
 fun SongItem(
-    song: Song,
-    onClick: () -> Unit
+    song: Song, onClick: () -> Unit
 ) {
     Surface(
         color = JokeboxColors.Surface,
@@ -1458,17 +1343,14 @@ fun SongItem(
             .clickable(onClick = onClick)
     ) {
         Row(
-            modifier = Modifier.padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically
+            modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
                     .size(48.dp)
                     .background(
-                        JokeboxColors.SurfaceVariant,
-                        RoundedCornerShape(10.dp)
-                    ),
-                contentAlignment = Alignment.Center
+                        JokeboxColors.SurfaceVariant, RoundedCornerShape(10.dp)
+                    ), contentAlignment = Alignment.Center
             ) {
                 if (song.albumArtUri != null) {
                     AsyncImage(
@@ -1479,9 +1361,7 @@ fun SongItem(
                     )
                 } else {
                     Text(
-                        text = "♫",
-                        color = JokeboxColors.Primary,
-                        fontSize = 24.sp
+                        text = "♫", color = JokeboxColors.Primary, fontSize = 24.sp
                     )
                 }
             }
@@ -1499,16 +1379,12 @@ fun SongItem(
                 Spacer(modifier = Modifier.height(4.dp))
 
                 Text(
-                    text = song.artist,
-                    color = JokeboxColors.TextSecondary,
-                    fontSize = 12.sp
+                    text = song.artist, color = JokeboxColors.TextSecondary, fontSize = 12.sp
                 )
             }
 
             Text(
-                text = song.duration,
-                color = JokeboxColors.TextSecondary,
-                fontSize = 12.sp
+                text = song.duration, color = JokeboxColors.TextSecondary, fontSize = 12.sp
             )
         }
     }
@@ -1532,8 +1408,7 @@ fun MiniPlayer(
         modifier = Modifier
             .fillMaxWidth()
             .clickable { onExpand() }
-            .padding(horizontal = 12.dp, vertical = 8.dp)
-    ) {
+            .padding(horizontal = 12.dp, vertical = 8.dp)) {
         if (song.albumArtUri != null) {
             AsyncImage(
                 model = song.albumArtUri,
@@ -1548,15 +1423,11 @@ fun MiniPlayer(
                 modifier = Modifier
                     .size(48.dp)
                     .background(
-                        JokeboxColors.Surface,
-                        RoundedCornerShape(10.dp)
-                    ),
-                contentAlignment = Alignment.Center
+                        JokeboxColors.Surface, RoundedCornerShape(10.dp)
+                    ), contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "♫",
-                    color = JokeboxColors.Primary,
-                    fontSize = 24.sp
+                    text = "♫", color = JokeboxColors.Primary, fontSize = 24.sp
                 )
             }
         }
@@ -1575,21 +1446,15 @@ fun MiniPlayer(
                     )
 
                     Text(
-                        text = song.artist,
-                        color = JokeboxColors.TextSecondary,
-                        fontSize = 12.sp
+                        text = song.artist, color = JokeboxColors.TextSecondary, fontSize = 12.sp
                     )
                 }
 
-                Text(
-                    text = "⏮",
-                    color = JokeboxColors.TextPrimary,
-                    modifier = Modifier
-                        .clickable {
-                            onPrevious()
-                        }
-                        .padding(8.dp)
-                )
+                Text(text = "⏮", color = JokeboxColors.TextPrimary, modifier = Modifier
+                    .clickable {
+                        onPrevious()
+                    }
+                    .padding(8.dp))
 
                 Text(
                     text = if (isPlaying) "Ⅱ" else "▶",
@@ -1599,25 +1464,19 @@ fun MiniPlayer(
                         .clickable {
                             onPlayPause()
                         }
-                        .padding(8.dp)
-                )
+                        .padding(8.dp))
 
-                Text(
-                    text = "⏭",
-                    color = JokeboxColors.TextPrimary,
-                    modifier = Modifier
-                        .clickable {
-                            onNext()
-                        }
-                        .padding(8.dp)
-                )
+                Text(text = "⏭", color = JokeboxColors.TextPrimary, modifier = Modifier
+                    .clickable {
+                        onNext()
+                    }
+                    .padding(8.dp))
             }
 
             // 재생 진행 바
             Slider(
                 value = currentPosition.toFloat().coerceIn(
-                    0f,
-                    totalDuration.toFloat().coerceAtLeast(1f)
+                    0f, totalDuration.toFloat().coerceAtLeast(1f)
                 ),
                 onValueChange = {
                     onSeek(it.toLong())
@@ -1628,8 +1487,7 @@ fun MiniPlayer(
 
             // 현재 시간과 전체 시간
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
                     text = formatTime(currentPosition),
@@ -1654,17 +1512,16 @@ fun formatTime(milliseconds: Long): String {
 
     return "%d:%02d".format(minutes, seconds)
 }
+
 @Composable
 fun PlaceholderContent(message: String) {
     Text(
-        text = message,
-        color = JokeboxColors.TextSecondary,
-        fontSize = 14.sp
+        text = message, color = JokeboxColors.TextSecondary, fontSize = 14.sp
     )
 }
 
 @Composable
-fun PlaylistDetailContent (
+fun PlaylistDetailContent(
     songs: List<Song>,
     onSongClick: (Song) -> Unit,
     title: String = "Favorites",
@@ -1701,21 +1558,20 @@ fun PlaylistDetailContent (
         val totalSeconds = songs.sumOf { song ->
             val parts = song.duration.split(":")
             when (parts.size) {
-                2 -> (parts[0].toIntOrNull() ?: 0) * 60 +
-                        (parts[1].toIntOrNull() ?: 0)
-                3 -> (parts[0].toIntOrNull() ?: 0) * 3600 +
-                        (parts[1].toIntOrNull() ?: 0) * 60 +
-                        (parts[2].toIntOrNull() ?: 0)
+                2 -> (parts[0].toIntOrNull() ?: 0) * 60 + (parts[1].toIntOrNull() ?: 0)
+
+                3 -> (parts[0].toIntOrNull() ?: 0) * 3600 + (parts[1].toIntOrNull()
+                    ?: 0) * 60 + (parts[2].toIntOrNull() ?: 0)
+
                 else -> 0
             }
         }
 
-        val totalDurationText =
-            if (totalSeconds >= 3600) {
-                "${totalSeconds / 3600} hr ${(totalSeconds % 3600) / 60} min"
-            } else {
-                "${totalSeconds / 60} min ${totalSeconds % 60} sec"
-            }
+        val totalDurationText = if (totalSeconds >= 3600) {
+            "${totalSeconds / 3600} hr ${(totalSeconds % 3600) / 60} min"
+        } else {
+            "${totalSeconds / 60} min ${totalSeconds % 60} sec"
+        }
 
 // 상단 뒤로가기 + 메뉴
         Row(
@@ -1724,12 +1580,9 @@ fun PlaylistDetailContent (
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(
-                onClick = { onBackClick?.invoke() }
-            ) {
+                onClick = { onBackClick?.invoke() }) {
                 Text(
-                    text = "<",
-                    color = JokeboxColors.TextPrimary,
-                    fontSize = 28.sp
+                    text = "<", color = JokeboxColors.TextPrimary, fontSize = 28.sp
                 )
             }
 
@@ -1737,73 +1590,49 @@ fun PlaylistDetailContent (
                 IconButton(
                     onClick = {
                         showPlaylistMenu = true
-                    }
-                ) {
+                    }) {
                     Text(
-                        text = "⋮",
-                        color = JokeboxColors.TextPrimary,
-                        fontSize = 28.sp
+                        text = "⋮", color = JokeboxColors.TextPrimary, fontSize = 28.sp
                     )
                 }
 
                 DropdownMenu(
-                    expanded = showPlaylistMenu,
-                    onDismissRequest = { showPlaylistMenu = false }
-                ) {
+                    expanded = showPlaylistMenu, onDismissRequest = { showPlaylistMenu = false }) {
                     if (isCustomPlaylist) {
-                        DropdownMenuItem(
-                            text = { Text("곡 편집") },
-                            onClick = {
-                                showPlaylistMenu = false
-                                selectedSongIds = songs.map { it.id }.toSet()
-                                showEditSongsDialog = true
-                            }
-                        )
+                        DropdownMenuItem(text = { Text("곡 편집") }, onClick = {
+                            showPlaylistMenu = false
+                            selectedSongIds = songs.map { it.id }.toSet()
+                            showEditSongsDialog = true
+                        })
 
-                        DropdownMenuItem(
-                            text = { Text("대표 이미지 변경") },
-                            onClick = {
-                                showPlaylistMenu = false
-                                onChangeCoverClick?.invoke()
-                            }
-                        )
+                        DropdownMenuItem(text = { Text("대표 이미지 변경") }, onClick = {
+                            showPlaylistMenu = false
+                            onChangeCoverClick?.invoke()
+                        })
 
-                        DropdownMenuItem(
-                            text = { Text("재생목록 제목 변경") },
-                            onClick = {
-                                showPlaylistMenu = false
-                                onEditClick?.invoke()
-                            }
-                        )
+                        DropdownMenuItem(text = { Text("재생목록 제목 변경") }, onClick = {
+                            showPlaylistMenu = false
+                            onEditClick?.invoke()
+                        })
 
-                        DropdownMenuItem(
-                            text = { Text("재생목록 삭제", color = Color.Red) },
-                            onClick = {
-                                showPlaylistMenu = false
-                                onDeleteClick?.invoke()
-                            }
-                        )
+                        DropdownMenuItem(text = { Text("재생목록 삭제", color = Color.Red) }, onClick = {
+                            showPlaylistMenu = false
+                            onDeleteClick?.invoke()
+                        })
                     } else {
-                        DropdownMenuItem(
-                            text = { Text("대표 이미지 변경") },
-                            onClick = {
-                                showPlaylistMenu = false
-                                onChangeCoverClick?.invoke()
-                            }
-                        )
+                        DropdownMenuItem(text = { Text("대표 이미지 변경") }, onClick = {
+                            showPlaylistMenu = false
+                            onChangeCoverClick?.invoke()
+                        })
 
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    "기본 대표 이미지 설정",
-                                    color = JokeboxColors.TextPrimary
-                                )
-                            },
-                            onClick = {
-                                showPlaylistMenu = false
-                                onResetCoverClick?.invoke()
-                            }
-                        )
+                        DropdownMenuItem(text = {
+                            Text(
+                                "기본 대표 이미지 설정", color = JokeboxColors.TextPrimary
+                            )
+                        }, onClick = {
+                            showPlaylistMenu = false
+                            onResetCoverClick?.invoke()
+                        })
                     }
                 }
             }
@@ -1813,8 +1642,7 @@ fun PlaylistDetailContent (
 
         // 앨범 커버 + 플레이리스트 정보
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
+            modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically
         ) {
             // 커버 이미지
             if (coverUri != null) {
@@ -1835,9 +1663,7 @@ fun PlaylistDetailContent (
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "♫",
-                        color = JokeboxColors.Primary,
-                        fontSize = 52.sp
+                        text = "♫", color = JokeboxColors.Primary, fontSize = 52.sp
                     )
                 }
             }
@@ -1864,9 +1690,7 @@ fun PlaylistDetailContent (
                 )
 
                 Text(
-                    text = totalDurationText,
-                    color = JokeboxColors.TextSecondary,
-                    fontSize = 14.sp
+                    text = totalDurationText, color = JokeboxColors.TextSecondary, fontSize = 14.sp
                 )
 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -1883,24 +1707,17 @@ fun PlaylistDetailContent (
                         modifier = Modifier.size(48.dp)
                     ) {
                         Text(
-                            text = "⤨",
-                            color = Color.Black,
-                            fontSize = 22.sp
+                            text = "⤨", color = Color.Black, fontSize = 22.sp
                         )
                     }
 
                     Button(
-                        onClick = { onPlayClick?.invoke() },
-                        colors = ButtonDefaults.buttonColors(
+                        onClick = { onPlayClick?.invoke() }, colors = ButtonDefaults.buttonColors(
                             containerColor = Color(0xFFFFD54A)
-                        ),
-                        contentPadding = PaddingValues(0.dp),
-                        modifier = Modifier.size(48.dp)
+                        ), contentPadding = PaddingValues(0.dp), modifier = Modifier.size(48.dp)
                     ) {
                         Text(
-                            text = "▶",
-                            color = Color.Black,
-                            fontSize = 20.sp
+                            text = "▶", color = Color.Black, fontSize = 20.sp
                         )
                     }
                 }
@@ -1911,17 +1728,13 @@ fun PlaylistDetailContent (
 
         if (songs.isEmpty()) {
             Text(
-                text = emptyMessage,
-                color = JokeboxColors.TextSecondary,
-                fontSize = 14.sp
+                text = emptyMessage, color = JokeboxColors.TextSecondary, fontSize = 14.sp
             )
         } else {
             LazyColumn {
                 items(songs) { song ->
                     SongItem(
-                        song = song,
-                        onClick = { onSongClick(song) }
-                    )
+                        song = song, onClick = { onSongClick(song) })
                 }
             }
         }
@@ -1929,173 +1742,166 @@ fun PlaylistDetailContent (
         if (showEditSongsDialog) {
             val availableSongs = allSongs
 
-            AlertDialog(
-                onDismissRequest = {
-                    showEditSongsDialog = false
-                    selectedSongIds = emptySet()
-                },
-                containerColor = JokeboxColors.Surface,
-                title = {
-                    Text(
-                        text = "곡 선택",
-                        color = JokeboxColors.TextPrimary
-                    )
-                },
-                text = {
-                    Column {
-                        if (availableSongs.isEmpty()) {
-                            Text(
-                                text = "추가할 수 있는 음악이 없습니다.",
-                                color = JokeboxColors.TextSecondary
-                            )
-                        } else {
-                            Row(
-                                modifier = Modifier.heightIn(max = 400.dp)
-                            ) {
-                                val songListState = rememberLazyListState()
-                                val indexScope = rememberCoroutineScope()
+            AlertDialog(onDismissRequest = {
+                showEditSongsDialog = false
+                selectedSongIds = emptySet()
+            }, containerColor = JokeboxColors.Surface, title = {
+                Text(
+                    text = "곡 선택", color = JokeboxColors.TextPrimary
+                )
+            }, text = {
+                Column {
+                    if (availableSongs.isEmpty()) {
+                        Text(
+                            text = "추가할 수 있는 음악이 없습니다.", color = JokeboxColors.TextSecondary
+                        )
+                    } else {
+                        Row(
+                            modifier = Modifier.heightIn(max = 400.dp)
+                        ) {
+                            val songListState = rememberLazyListState()
+                            val indexScope = rememberCoroutineScope()
 
-                                val indexLetters = listOf("#") +
-                                        ('A'..'Z').map { it.toString() } +
-                                        listOf(
-                                            "ㄱ", "ㄴ", "ㄷ", "ㄹ", "ㅁ", "ㅂ", "ㅅ",
-                                            "ㅇ", "ㅈ", "ㅊ", "ㅋ", "ㅌ", "ㅍ", "ㅎ"
-                                        )
+                            val indexLetters =
+                                listOf("#") + ('A'..'Z').map { it.toString() } + listOf(
+                                    "ㄱ",
+                                    "ㄴ",
+                                    "ㄷ",
+                                    "ㄹ",
+                                    "ㅁ",
+                                    "ㅂ",
+                                    "ㅅ",
+                                    "ㅇ",
+                                    "ㅈ",
+                                    "ㅊ",
+                                    "ㅋ",
+                                    "ㅌ",
+                                    "ㅍ",
+                                    "ㅎ"
+                                )
 
-                                fun getIndexKey(title: String): String {
-                                    val ch = title.firstOrNull { !it.isWhitespace() }
-                                        ?.uppercaseChar() ?: return "#"
+                            fun getIndexKey(title: String): String {
+                                val ch = title.firstOrNull { !it.isWhitespace() }?.uppercaseChar()
+                                    ?: return "#"
 
-                                    if (ch in '가'..'힣') {
-                                        val initials = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ"
-                                        val index = (ch.code - '가'.code) / 588
-                                        return when (initials[index]) {
-                                            'ㄲ' -> "ㄱ"
-                                            'ㄸ' -> "ㄷ"
-                                            'ㅃ' -> "ㅂ"
-                                            'ㅆ' -> "ㅅ"
-                                            'ㅉ' -> "ㅈ"
-                                            else -> initials[index].toString()
-                                        }
-                                    }
-
-                                    return when {
-                                        ch.isDigit() -> "#"
-                                        ch in 'A'..'Z' -> ch.toString()
-                                        else -> "#"
+                                if (ch in '가'..'힣') {
+                                    val initials = "ㄱㄲㄴㄷㄸㄹㅁㅂㅃㅅㅆㅇㅈㅉㅊㅋㅌㅍㅎ"
+                                    val index = (ch.code - '가'.code) / 588
+                                    return when (initials[index]) {
+                                        'ㄲ' -> "ㄱ"
+                                        'ㄸ' -> "ㄷ"
+                                        'ㅃ' -> "ㅂ"
+                                        'ㅆ' -> "ㅅ"
+                                        'ㅉ' -> "ㅈ"
+                                        else -> initials[index].toString()
                                     }
                                 }
 
-                                LazyColumn(
-                                    state = songListState,
-                                    modifier = Modifier.weight(1f)
-                                ) {
-                                    items(availableSongs) { song ->
-                                        val isSelected = song.id in selectedSongIds
+                                return when {
+                                    ch.isDigit() -> "#"
+                                    ch in 'A'..'Z' -> ch.toString()
+                                    else -> "#"
+                                }
+                            }
 
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .clickable {
-                                                    selectedSongIds =
-                                                        if (isSelected) {
-                                                            selectedSongIds - song.id
-                                                        } else {
-                                                            selectedSongIds + song.id
-                                                        }
-                                                }
-                                                .padding(vertical = 4.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Checkbox(
-                                                checked = isSelected,
-                                                onCheckedChange = { checked ->
-                                                    selectedSongIds =
-                                                        if (checked) {
-                                                            selectedSongIds + song.id
-                                                        } else {
-                                                            selectedSongIds - song.id
-                                                        }
-                                                }
-                                            )
+                            LazyColumn(
+                                state = songListState, modifier = Modifier.weight(1f)
+                            ) {
+                                items(availableSongs) { song ->
+                                    val isSelected = song.id in selectedSongIds
 
-                                            Column(
-                                                modifier = Modifier.weight(1f)
-                                            ) {
-                                                Text(
-                                                    text = song.title,
-                                                    color = JokeboxColors.TextPrimary,
-                                                    maxLines = 1
-                                                )
-                                                Text(
-                                                    text = song.artist,
-                                                    color = JokeboxColors.TextSecondary,
-                                                    fontSize = 12.sp,
-                                                    maxLines = 1
-                                                )
+                                    Row(modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            selectedSongIds = if (isSelected) {
+                                                selectedSongIds - song.id
+                                            } else {
+                                                selectedSongIds + song.id
                                             }
                                         }
+                                        .padding(vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically) {
+                                        Checkbox(
+                                            checked = isSelected, onCheckedChange = { checked ->
+                                                selectedSongIds = if (checked) {
+                                                    selectedSongIds + song.id
+                                                } else {
+                                                    selectedSongIds - song.id
+                                                }
+                                            })
+
+                                        Column(
+                                            modifier = Modifier.weight(1f)
+                                        ) {
+                                            Text(
+                                                text = song.title,
+                                                color = JokeboxColors.TextPrimary,
+                                                maxLines = 1
+                                            )
+                                            Text(
+                                                text = song.artist,
+                                                color = JokeboxColors.TextSecondary,
+                                                fontSize = 12.sp,
+                                                maxLines = 1
+                                            )
+                                        }
                                     }
                                 }
-                                Column(
-                                    modifier = Modifier
-                                        .width(24.dp)
-                                        .height(400.dp)
-                                        .verticalScroll(rememberScrollState()),
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    verticalArrangement = Arrangement.Top
-                                ) {
-                                    indexLetters.forEach { letter ->
-                                        Text(
-                                            text = letter,
-                                            fontSize = 10.sp,
-                                            lineHeight = 16.sp,
-                                            color = JokeboxColors.TextSecondary,
-                                            modifier = Modifier
-                                                .clickable {
-                                                    val targetIndex = availableSongs.indexOfFirst {
-                                                        getIndexKey(it.title) == letter
-                                                    }
+                            }
+                            Column(
+                                modifier = Modifier
+                                    .width(24.dp)
+                                    .height(400.dp)
+                                    .verticalScroll(rememberScrollState()),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Top
+                            ) {
+                                indexLetters.forEach { letter ->
+                                    Text(
+                                        text = letter,
+                                        fontSize = 10.sp,
+                                        lineHeight = 16.sp,
+                                        color = JokeboxColors.TextSecondary,
+                                        modifier = Modifier
+                                            .clickable {
+                                                val targetIndex = availableSongs.indexOfFirst {
+                                                    getIndexKey(it.title) == letter
+                                                }
 
-                                                    if (targetIndex >= 0) {
-                                                        indexScope.launch {
-                                                            songListState.scrollToItem(targetIndex)
-                                                        }
+                                                if (targetIndex >= 0) {
+                                                    indexScope.launch {
+                                                        songListState.scrollToItem(targetIndex)
                                                     }
                                                 }
-                                                .padding(vertical = 2.dp)
-                                        )
-                                    }
+                                            }
+                                            .padding(vertical = 2.dp))
                                 }
                             }
                         }
                     }
-                },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            onEditSongs?.invoke(selectedSongIds.toList())
-                            selectedSongIds = emptySet()
-                            showEditSongsDialog = false
-                        }
-                    ) {
-                        Text("저장", color = JokeboxColors.Primary)
-                    }
-                },
-                dismissButton = {
-                    TextButton(
-                        onClick = {
-                            showEditSongsDialog = false
-                            selectedSongIds = emptySet()
-                        }
-                    ) {
-                        Text("취소", color = JokeboxColors.TextSecondary)
-                    }
                 }
-            )
+            }, confirmButton = {
+                TextButton(
+                    onClick = {
+                        onEditSongs?.invoke(selectedSongIds.toList())
+                        selectedSongIds = emptySet()
+                        showEditSongsDialog = false
+                    }) {
+                    Text("저장", color = JokeboxColors.Primary)
+                }
+            }, dismissButton = {
+                TextButton(
+                    onClick = {
+                        showEditSongsDialog = false
+                        selectedSongIds = emptySet()
+                    }) {
+                    Text("취소", color = JokeboxColors.TextSecondary)
+                }
+            })
         }
     }
 }
+
 @Composable
 fun SearchContent(
     songs: List<Song>,
@@ -2104,8 +1910,9 @@ fun SearchContent(
     onSongClick: (Song) -> Unit
 ) {
     val filteredSongs = songs.filter { song ->
-        song.title.contains(searchQuery, ignoreCase = true) ||
-                song.artist.contains(searchQuery, ignoreCase = true)
+        song.title.contains(searchQuery, ignoreCase = true) || song.artist.contains(
+            searchQuery, ignoreCase = true
+        )
     }
 
     Column(
@@ -2137,14 +1944,11 @@ fun SearchContent(
             },
             trailingIcon = {
                 if (searchQuery.isNotEmpty()) {
-                    Text(
-                        text = "✕",
-                        modifier = Modifier
-                            .clickable {
-                                onSearchQueryChange("")
-                            }
-                            .padding(8.dp)
-                    )
+                    Text(text = "✕", modifier = Modifier
+                        .clickable {
+                            onSearchQueryChange("")
+                        }
+                        .padding(8.dp))
                 }
             },
             colors = OutlinedTextFieldDefaults.colors(
@@ -2189,11 +1993,9 @@ fun SearchContent(
                 LazyColumn {
                     items(filteredSongs) { song ->
                         SongItem(
-                            song = song,
-                            onClick = {
+                            song = song, onClick = {
                                 onSongClick(song)
-                            }
-                        )
+                            })
                     }
                 }
             }
@@ -2229,8 +2031,7 @@ fun NowPlayingContent(
 
         // 상단 뒤로 가기
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
+            modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = "⌄",
@@ -2238,8 +2039,7 @@ fun NowPlayingContent(
                 color = JokeboxColors.TextPrimary,
                 modifier = Modifier.clickable {
                     onBack()
-                }
-            )
+                })
 
             Spacer(modifier = Modifier.weight(1f))
 
@@ -2273,15 +2073,11 @@ fun NowPlayingContent(
                     .fillMaxWidth()
                     .aspectRatio(1f)
                     .background(
-                        JokeboxColors.Surface,
-                        RoundedCornerShape(20.dp)
-                    ),
-                contentAlignment = Alignment.Center
+                        JokeboxColors.Surface, RoundedCornerShape(20.dp)
+                    ), contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "♫",
-                    fontSize = 100.sp,
-                    color = JokeboxColors.Primary
+                    text = "♫", fontSize = 100.sp, color = JokeboxColors.Primary
                 )
             }
         }
@@ -2290,8 +2086,7 @@ fun NowPlayingContent(
 
         // 곡 정보
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
+            modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically
         ) {
             Column(
                 modifier = Modifier.weight(1f)
@@ -2306,26 +2101,20 @@ fun NowPlayingContent(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 Text(
-                    text = song.artist,
-                    color = JokeboxColors.TextSecondary,
-                    fontSize = 16.sp
+                    text = song.artist, color = JokeboxColors.TextSecondary, fontSize = 16.sp
                 )
             }
 
             Text(
-                text = if (isFavorite) "♥" else "♡",
-                color = if (isFavorite) {
-                    JokeboxColors.Primary
-                } else {
-                    JokeboxColors.TextSecondary
-                },
-                fontSize = 30.sp,
-                modifier = Modifier
+                text = if (isFavorite) "♥" else "♡", color = if (isFavorite) {
+                JokeboxColors.Primary
+            } else {
+                JokeboxColors.TextSecondary
+            }, fontSize = 30.sp, modifier = Modifier
                     .clickable {
                         onToggleFavorite()
                     }
-                    .padding(8.dp)
-            )
+                    .padding(8.dp))
         }
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -2333,8 +2122,7 @@ fun NowPlayingContent(
         // 재생 진행 바
         Slider(
             value = currentPosition.toFloat().coerceIn(
-                0f,
-                totalDuration.toFloat().coerceAtLeast(1f)
+                0f, totalDuration.toFloat().coerceAtLeast(1f)
             ),
             onValueChange = {
                 onSeek(it.toLong())
@@ -2342,8 +2130,7 @@ fun NowPlayingContent(
             valueRange = 0f..totalDuration.toFloat().coerceAtLeast(1f),
             enabled = totalDuration > 0L,
             colors = SliderDefaults.colors(
-                thumbColor = JokeboxColors.Primary,
-                activeTrackColor = JokeboxColors.Primary
+                thumbColor = JokeboxColors.Primary, activeTrackColor = JokeboxColors.Primary
             )
         )
 
@@ -2354,42 +2141,33 @@ fun NowPlayingContent(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "⤨",
-                fontSize = 24.sp,
-                color = if (shuffleEnabled) {
-                    JokeboxColors.Primary
-                } else {
-                    JokeboxColors.TextSecondary
-                },
-                modifier = Modifier
+                text = "⤨", fontSize = 24.sp, color = if (shuffleEnabled) {
+                JokeboxColors.Primary
+            } else {
+                JokeboxColors.TextSecondary
+            }, modifier = Modifier
                     .clickable {
                         onToggleShuffle()
                     }
-                    .padding(8.dp)
-            )
+                    .padding(8.dp))
 
             Text(
                 text = when (repeatMode) {
-                    Player.REPEAT_MODE_ALL -> "↻"
-                    Player.REPEAT_MODE_ONE -> "↻¹"
-                    else -> "↻"
-                },
-                fontSize = 24.sp,
-                color = if (repeatMode != Player.REPEAT_MODE_OFF) {
-                    JokeboxColors.Primary
-                } else {
-                    JokeboxColors.TextSecondary
-                },
-                modifier = Modifier
+                Player.REPEAT_MODE_ALL -> "↻"
+                Player.REPEAT_MODE_ONE -> "↻¹"
+                else -> "↻"
+            }, fontSize = 24.sp, color = if (repeatMode != Player.REPEAT_MODE_OFF) {
+                JokeboxColors.Primary
+            } else {
+                JokeboxColors.TextSecondary
+            }, modifier = Modifier
                     .clickable {
                         onCycleRepeat()
                     }
-                    .padding(8.dp)
-            )
+                    .padding(8.dp))
         }
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
+            modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
                 text = formatTime(currentPosition),
@@ -2418,8 +2196,7 @@ fun NowPlayingContent(
                 color = JokeboxColors.TextPrimary,
                 modifier = Modifier.clickable {
                     onPrevious()
-                }
-            )
+                })
 
             Text(
                 text = if (isPlaying) "Ⅱ" else "▶",
@@ -2427,8 +2204,7 @@ fun NowPlayingContent(
                 color = JokeboxColors.Primary,
                 modifier = Modifier.clickable {
                     onPlayPause()
-                }
-            )
+                })
 
             Text(
                 text = "⏭",
@@ -2436,8 +2212,7 @@ fun NowPlayingContent(
                 color = JokeboxColors.TextPrimary,
                 modifier = Modifier.clickable {
                     onNext()
-                }
-            )
+                })
         }
 
         Spacer(modifier = Modifier.weight(1f))
@@ -2474,8 +2249,7 @@ fun PlaylistsContent(
         if (uri != null) {
             try {
                 context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
                 )
             } catch (e: SecurityException) {
                 // 권한을 유지할 수 없는 경우에도 선택한 이미지는 일단 사용
@@ -2484,10 +2258,7 @@ fun PlaylistsContent(
     }
 
     val categories = listOf(
-        "최근에 추가한 곡" to "＋",
-        "최근 재생한 곡" to "◷",
-        "많이 재생한 곡" to "♫",
-        "좋아요 표시한 곡" to "♥"
+        "최근에 추가한 곡" to "＋", "최근 재생한 곡" to "◷", "많이 재생한 곡" to "♫", "좋아요 표시한 곡" to "♥"
     )
 
     LazyColumn(
@@ -2495,10 +2266,7 @@ fun PlaylistsContent(
             .fillMaxSize()
             .background(JokeboxColors.Background),
         contentPadding = PaddingValues(
-            start = 10.dp,
-            end = 10.dp,
-            top = 8.dp,
-            bottom = 24.dp
+            start = 10.dp, end = 10.dp, top = 8.dp, bottom = 24.dp
         ),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
@@ -2528,8 +2296,7 @@ fun PlaylistsContent(
                                     .weight(1f)
                                     .clickable {
                                         onCategoryClick(name)
-                                    }
-                            ) {
+                                    }) {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -2606,8 +2373,7 @@ fun PlaylistsContent(
                     modifier = Modifier.clickable {
                         newPlaylistName = ""
                         showCreateDialog = true
-                    }
-                )
+                    })
             }
         }
 
@@ -2622,15 +2388,12 @@ fun PlaylistsContent(
             }
         } else {
             items(playlists) { playlist ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            onPlaylistClick(playlist)
-                        }
-                        .padding(vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        onPlaylistClick(playlist)
+                    }
+                    .padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier = Modifier
                             .size(64.dp)
@@ -2647,9 +2410,7 @@ fun PlaylistsContent(
                             )
                         } else {
                             Text(
-                                text = "♫",
-                                color = JokeboxColors.Primary,
-                                fontSize = 30.sp
+                                text = "♫", color = JokeboxColors.Primary, fontSize = 30.sp
                             )
                         }
                     }
@@ -2681,8 +2442,8 @@ fun PlaylistsContent(
     if (showCreateDialog) {
         AlertDialog(
             onDismissRequest = {
-                showCreateDialog = false
-            },
+            showCreateDialog = false
+        },
             title = {
                 Text("새 플레이리스트")
             },
@@ -2697,15 +2458,13 @@ fun PlaylistsContent(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    TextButton(
-                        onClick = {
-                            imagePickerLauncher.launch(
-                                PickVisualMediaRequest(
-                                    ActivityResultContracts.PickVisualMedia.ImageOnly
-                                )
+                    TextButton(onClick = {
+                        imagePickerLauncher.launch(
+                            PickVisualMediaRequest(
+                                ActivityResultContracts.PickVisualMedia.ImageOnly
                             )
-                        }
-                    ) {
+                        )
+                    }) {
                         Text("커버 이미지 선택")
                     }
 
@@ -2722,32 +2481,28 @@ fun PlaylistsContent(
                 }
             },
             confirmButton = {
-                TextButton(
-                    onClick = {
-                        val name = newPlaylistName.trim()
+                TextButton(onClick = {
+                    val name = newPlaylistName.trim()
 
-                        if (name.isNotEmpty()) {
-                            onCreatePlaylist(name, selectedCoverUri)
+                    if (name.isNotEmpty()) {
+                        onCreatePlaylist(name, selectedCoverUri)
 
-                            // 다음 플레이리스트 생성을 위해 초기화
-                            newPlaylistName = ""
-                            selectedCoverUri = null
+                        // 다음 플레이리스트 생성을 위해 초기화
+                        newPlaylistName = ""
+                        selectedCoverUri = null
 
-                            showCreateDialog = false
-                        }
+                        showCreateDialog = false
                     }
-                ) {
+                }) {
                     Text("만들기")
                 }
             },
             dismissButton = {
-                TextButton(
-                    onClick = {
-                        newPlaylistName = ""
-                        selectedCoverUri = null
-                        showCreateDialog = false
-                    }
-                ) {
+                TextButton(onClick = {
+                    newPlaylistName = ""
+                    selectedCoverUri = null
+                    showCreateDialog = false
+                }) {
                     Text("취소")
                 }
             },

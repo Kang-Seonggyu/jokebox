@@ -179,47 +179,29 @@ fun JokeboxApp() {
     var searchQuery by remember { mutableStateOf("") }
     var selectedSong by remember { mutableStateOf<Song?>(null) }
     var favoriteSongIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+
     var playlists by remember { mutableStateOf<List<MusicPlaylist>>(emptyList()) }
-    var playlistsLoaded by remember {
-        mutableStateOf(false)
-    }
-    var favoritesLoaded by remember {
-        mutableStateOf(false)
-    }
-    var recentlyPlayedSongIds by remember {
-        mutableStateOf<List<Long>>(emptyList())
-    }
-    var recentlyPlayedLoaded by remember {
-        mutableStateOf(false)
-    }
-    var playCounts by remember {
-        mutableStateOf<Map<Long, Int>>(emptyMap())
-    }
-    var playCountsLoaded by remember {
-        mutableStateOf(false)
-    }
-    var listenedDuration by remember {
-        mutableLongStateOf(0L)
-    }
-    var playCountRegistered by remember {
-        mutableStateOf(false)
-    }
-    var showNowPlaying by remember {
-        mutableStateOf(false)
-    }
-    var selectedCategory by remember {
-        mutableStateOf<String?>(null)
-    }
-    var selectedPlaylist by remember {
-        mutableStateOf<MusicPlaylist?>(null)
-    }
-    var showEditPlaylistDialog by remember {
-        mutableStateOf(false)
-    }
+    var selectedPlaylist by remember { mutableStateOf<MusicPlaylist?>(null) }
+    var favoritesLoaded by remember { mutableStateOf(false) }
+
+    var recentlyPlayedSongIds by remember { mutableStateOf<List<Long>>(emptyList()) }
+    var recentlyPlayedLoaded by remember { mutableStateOf(false) }
+
+    var playCounts by remember { mutableStateOf<Map<Long, Int>>(emptyMap()) }
+    var playCountsLoaded by remember { mutableStateOf(false) }
+    var playCountRegistered by remember { mutableStateOf(false) }
+
+    var showNowPlaying by remember { mutableStateOf(false) }
+    var listenedDuration by remember { mutableLongStateOf(0L) }
+
+    var selectedCategory by remember { mutableStateOf<String?>(null) }
+    var playlistsLoaded by remember { mutableStateOf(false) }
+
+    var showEditPlaylistDialog by remember { mutableStateOf(false) }
     var showDeletePlaylistDialog by remember { mutableStateOf(false) }
-    var pendingPlaylistCoverId by remember {
-        mutableStateOf<Long?>(null)
-    }
+
+    var pendingPlaylistCoverId by remember { mutableStateOf<Long?>(null) }
+
     var categoryCoverUris by remember {
         mutableStateOf(
             listOf(
@@ -414,6 +396,17 @@ fun JokeboxApp() {
 
     val player = remember {
         ExoPlayer.Builder(context.applicationContext).build()
+    }
+
+    fun playCategorySongs(categorySongs: List<Song>, shuffle: Boolean = false) {
+        val queue = if (shuffle) categorySongs.shuffled() else categorySongs
+        if (queue.isNotEmpty()) {
+            val mediaItems = queue.map { song -> MediaItem.fromUri(song.uri) }
+            selectedSong = queue.first()
+            player.setMediaItems(mediaItems, 0, 0L)
+            player.prepare()
+            player.play()
+        }
     }
 
     // 현재 재생 상태
@@ -1049,6 +1042,9 @@ fun JokeboxApp() {
                                                 .sortedByDescending { it.dateAdded }
 
                                         PlaylistDetailContent(
+                                            onBackClick = { selectedCategory = null },
+                                            onPlayClick = { playCategorySongs(recentSongs) },
+                                            onShuffleClick = { playCategorySongs(recentSongs, shuffle = true) },
                                             songs = recentSongs,
                                             onSongClick = { song ->
                                                 val mediaItems = songs.map { item ->
@@ -1098,6 +1094,9 @@ fun JokeboxApp() {
                                             }
 
                                         PlaylistDetailContent(
+                                            onBackClick = { selectedCategory = null },
+                                            onPlayClick = { playCategorySongs(recentlyPlayedSongs) },
+                                            onShuffleClick = { playCategorySongs(recentlyPlayedSongs, shuffle = true) },
                                             songs = recentlyPlayedSongs,
                                             onSongClick = { song ->
                                                 val mediaItems = songs.map { item ->
@@ -1146,6 +1145,9 @@ fun JokeboxApp() {
                                                 }
 
                                         PlaylistDetailContent(
+                                            onBackClick = { selectedCategory = null },
+                                            onPlayClick = { playCategorySongs(mostPlayedSongs) },
+                                            onShuffleClick = { playCategorySongs(mostPlayedSongs, shuffle = true) },
                                             songs = mostPlayedSongs,
                                             onSongClick = { song ->
                                                 val mediaItems = songs.map { item ->
@@ -1187,6 +1189,9 @@ fun JokeboxApp() {
 
                                     "좋아요 표시한 곡" -> {
                                         PlaylistDetailContent(
+                                            onBackClick = { selectedCategory = null },
+                                            onPlayClick = { playCategorySongs(songs.filter { it.id in favoriteSongIds }) },
+                                            onShuffleClick = { playCategorySongs(songs.filter { it.id in favoriteSongIds }, shuffle = true) },
                                             songs = songs.filter { it.id in favoriteSongIds },
                                             onSongClick = { song ->
                                                 val mediaItems = songs.map { item ->

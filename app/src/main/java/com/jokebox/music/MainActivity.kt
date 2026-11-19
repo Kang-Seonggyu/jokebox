@@ -51,6 +51,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.IconButton
 import androidx.compose.ui.layout.ContentScale
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
+import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.common.Player
@@ -62,6 +64,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlin.time.Duration.Companion.milliseconds
 
 
 class MainActivity : ComponentActivity() {
@@ -132,7 +135,7 @@ private suspend fun loadMusic(context: Context): List<Song> = withContext(Dispat
 
             val albumArtUri = if (albumId > 0) {
                 ContentUris.withAppendedId(
-                    Uri.parse("content://media/external/audio/albumart"), albumId
+                    "content://media/external/audio/albumart".toUri(), albumId
                 )
             } else {
                 null
@@ -168,10 +171,10 @@ private suspend fun loadMusic(context: Context): List<Song> = withContext(Dispat
 
 @Composable
 fun JokeboxApp() {
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
     val categoryCoverPrefs = remember {
         context.getSharedPreferences(
-            "jokebox_preferences", android.content.Context.MODE_PRIVATE
+            "jokebox_preferences", Context.MODE_PRIVATE
         )
     }
 
@@ -212,7 +215,7 @@ fun JokeboxApp() {
                 )
 
                 if (savedUri != null) {
-                    key to Uri.parse(savedUri)
+                    key to savedUri.toUri()
                 } else {
                     null
                 }
@@ -252,7 +255,7 @@ fun JokeboxApp() {
     }
     LaunchedEffect(Unit) {
         val prefs = context.getSharedPreferences(
-            "jokebox_preferences", android.content.Context.MODE_PRIVATE
+            "jokebox_preferences", Context.MODE_PRIVATE
         )
 
         val savedCounts = prefs.getString(
@@ -282,7 +285,7 @@ fun JokeboxApp() {
 
         if (savedData != null) {
             try {
-                val jsonArray = org.json.JSONArray(savedData)
+                val jsonArray = JSONArray(savedData)
 
                 playlists = List(jsonArray.length()) { index ->
                     val json = jsonArray.getJSONObject(index)
@@ -305,7 +308,7 @@ fun JokeboxApp() {
                         }
                     )
                 }
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 playlists = emptyList()
             }
         }
@@ -314,16 +317,16 @@ fun JokeboxApp() {
     }
     LaunchedEffect(playlists, playlistsLoaded) {
         if (playlistsLoaded) {
-            val jsonArray = org.json.JSONArray()
+            val jsonArray = JSONArray()
 
             playlists.forEach { playlist ->
-                val songIdsJson = org.json.JSONArray()
+                val songIdsJson = JSONArray()
 
                 playlist.songIds.forEach { songId ->
                     songIdsJson.put(songId)
                 }
 
-                val json = org.json.JSONObject().apply {
+                val json = JSONObject().apply {
                     put("id", playlist.id)
                     put("name", playlist.name)
                     put("songIds", songIdsJson)
@@ -337,38 +340,44 @@ fun JokeboxApp() {
                 "jokebox_preferences", Context.MODE_PRIVATE
             )
 
-            prefs.edit().putString("playlists", jsonArray.toString()).apply()
+            prefs.edit {
+                putString("playlists", jsonArray.toString())
+            }
         }
     }
 
     LaunchedEffect(playCounts, playCountsLoaded) {
         if (playCountsLoaded) {
             val prefs = context.getSharedPreferences(
-                "jokebox_preferences", android.content.Context.MODE_PRIVATE
+                "jokebox_preferences", Context.MODE_PRIVATE
             )
 
             val savedCounts = playCounts.entries.joinToString(",") {
                 "${it.key}:${it.value}"
             }
 
-            prefs.edit().putString("play_counts", savedCounts).apply()
+            prefs.edit {
+                putString("play_counts", savedCounts)
+            }
         }
     }
     LaunchedEffect(recentlyPlayedSongIds, recentlyPlayedLoaded) {
         if (recentlyPlayedLoaded) {
             val prefs = context.getSharedPreferences(
-                "jokebox_preferences", android.content.Context.MODE_PRIVATE
+                "jokebox_preferences", Context.MODE_PRIVATE
             )
 
-            prefs.edit().putString(
-                "recently_played_song_ids", recentlyPlayedSongIds.joinToString(",")
-            ).apply()
+            prefs.edit {
+                putString(
+                    "recently_played_song_ids", recentlyPlayedSongIds.joinToString(",")
+                )
+            }
         }
     }
 
     LaunchedEffect(Unit) {
         val prefs = context.getSharedPreferences(
-            "jokebox_preferences", android.content.Context.MODE_PRIVATE
+            "jokebox_preferences", Context.MODE_PRIVATE
         )
 
         val savedIds = prefs.getString(
@@ -388,9 +397,11 @@ fun JokeboxApp() {
                 "jokebox_preferences", 0
             )
 
-            preferences.edit().putStringSet(
-                "favorite_song_ids", favoriteSongIds.map { it.toString() }.toSet()
-            ).apply()
+            preferences.edit {
+                putStringSet(
+                    "favorite_song_ids", favoriteSongIds.map { it.toString() }.toSet()
+                )
+            }
         }
     }
 
@@ -492,9 +503,9 @@ fun JokeboxApp() {
     ) { uri ->
         if (uri != null && pendingCategoryCoverKey != null) {
             categoryCoverUris = categoryCoverUris + (pendingCategoryCoverKey!! to uri)
-            categoryCoverPrefs.edit().putString(
-                "category_cover_${pendingCategoryCoverKey!!}", uri.toString()
-            ).apply()
+            categoryCoverPrefs.edit {
+                putString("category_cover_${pendingCategoryCoverKey!!}", uri.toString())
+            }
 
             try {
                 context.contentResolver.takePersistableUriPermission(
@@ -563,10 +574,10 @@ fun JokeboxApp() {
     }
 
     LaunchedEffect(hasAudioPermission) {
-        if (hasAudioPermission) {
-            songs = loadMusic(context)
+        songs = if (hasAudioPermission) {
+            loadMusic(context)
         } else {
-            songs = emptyList()
+            emptyList()
         }
     }
 
@@ -606,7 +617,7 @@ fun JokeboxApp() {
                 }
             }
 
-            delay(500)
+            delay(500.milliseconds)
         }
     }
 
@@ -867,8 +878,9 @@ fun JokeboxApp() {
                                             jsonArray.put(jsonObject)
                                         }
 
-                                        categoryCoverPrefs.edit()
-                                            .putString("playlists", jsonArray.toString()).apply()
+                                        categoryCoverPrefs.edit {
+                                            putString("playlists", jsonArray.toString())
+                                        }
                                     },
                                     onPlayClick = {
                                         if (playlistSongs.isNotEmpty()) {
@@ -965,9 +977,9 @@ fun JokeboxApp() {
                                                     jsonArray.put(jsonObject)
                                                 }
 
-                                                categoryCoverPrefs.edit().putString(
-                                                    "playlists", jsonArray.toString()
-                                                ).apply()
+                                                categoryCoverPrefs.edit {
+                                                    putString("playlists", jsonArray.toString())
+                                                }
 
                                                 showEditPlaylistDialog = false
                                             }) {
@@ -1078,8 +1090,9 @@ fun JokeboxApp() {
                                                 categoryCoverUris =
                                                     categoryCoverUris - "Recently Added"
 
-                                                categoryCoverPrefs.edit()
-                                                    .remove("category_cover_Recently Added").apply()
+                                                categoryCoverPrefs.edit {
+                                                    remove("category_cover_Recently Added")
+                                                }
                                             },
                                             title = "최근에 추가한 곡",
                                             allSongs = songs,
@@ -1128,9 +1141,9 @@ fun JokeboxApp() {
                                             onResetCoverClick = {
                                                 categoryCoverUris =
                                                     categoryCoverUris - "Recently Played"
-                                                categoryCoverPrefs.edit()
-                                                    .remove("category_cover_Recently Played")
-                                                    .apply()
+                                                categoryCoverPrefs.edit {
+                                                    remove("category_cover_Recently Played")
+                                                }
                                             },
                                             title = "최근 재생한 곡",
                                             allSongs = songs,
@@ -1179,8 +1192,9 @@ fun JokeboxApp() {
                                             onResetCoverClick = {
                                                 categoryCoverUris =
                                                     categoryCoverUris - "Most Played"
-                                                categoryCoverPrefs.edit()
-                                                    .remove("category_cover_Most Played").apply()
+                                                categoryCoverPrefs.edit {
+                                                    remove("category_cover_Most Played")
+                                                }
                                             },
                                             title = "많이 재생한 곡",
                                             allSongs = songs,
@@ -1225,8 +1239,9 @@ fun JokeboxApp() {
                                             },
                                             onResetCoverClick = {
                                                 categoryCoverUris = categoryCoverUris - "Favorites"
-                                                categoryCoverPrefs.edit()
-                                                    .remove("category_cover_Favorites").apply()
+                                                categoryCoverPrefs.edit {
+                                                    remove("category_cover_Favorites")
+                                                }
                                             },
                                         )
                                     }
@@ -1745,8 +1760,6 @@ fun PlaylistDetailContent(
         }
 
         if (showEditSongsDialog) {
-            val availableSongs = allSongs
-
             AlertDialog(onDismissRequest = {
                 showEditSongsDialog = false
                 selectedSongIds = emptySet()
@@ -1756,7 +1769,7 @@ fun PlaylistDetailContent(
                 )
             }, text = {
                 Column {
-                    if (availableSongs.isEmpty()) {
+                    if (allSongs.isEmpty()) {
                         Text(
                             text = "추가할 수 있는 음악이 없습니다.", color = JokeboxColors.TextSecondary
                         )
@@ -1812,7 +1825,7 @@ fun PlaylistDetailContent(
                             LazyColumn(
                                 state = songListState, modifier = Modifier.weight(1f)
                             ) {
-                                items(availableSongs) { song ->
+                                items(allSongs) { song ->
                                     val isSelected = song.id in selectedSongIds
 
                                     Row(modifier = Modifier
@@ -1869,7 +1882,7 @@ fun PlaylistDetailContent(
                                         color = JokeboxColors.TextSecondary,
                                         modifier = Modifier
                                             .clickable {
-                                                val targetIndex = availableSongs.indexOfFirst {
+                                                val targetIndex = allSongs.indexOfFirst {
                                                     getIndexKey(it.title) == letter
                                                 }
 
@@ -2254,9 +2267,9 @@ fun PlaylistsContent(
         if (uri != null) {
             try {
                 context.contentResolver.takePersistableUriPermission(
-                    uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
                 )
-            } catch (e: SecurityException) {
+            } catch (_: SecurityException) {
                 // 권한을 유지할 수 없는 경우에도 선택한 이미지는 일단 사용
             }
         }

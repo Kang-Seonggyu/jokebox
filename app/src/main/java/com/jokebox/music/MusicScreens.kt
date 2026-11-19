@@ -1356,14 +1356,24 @@ fun AlbumsContent(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        Text(
-                            text = "${album.artist} | ${album.songs.size}곡",
-                            color = JokeboxColors.TextSecondary,
-                            fontSize = 12.sp,
-                            lineHeight = 12.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = album.artist,
+                                modifier = Modifier.weight(1f),
+                                color = JokeboxColors.TextSecondary,
+                                fontSize = 12.sp,
+                                lineHeight = 12.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                text = " | ${album.songs.size}곡",
+                                color = JokeboxColors.TextSecondary,
+                                fontSize = 12.sp,
+                                lineHeight = 12.sp,
+                                maxLines = 1,
+                            )
+                        }
                     }
                 }
             }

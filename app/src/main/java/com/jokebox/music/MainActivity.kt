@@ -4,12 +4,15 @@ import com.jokebox.music.ui.theme.JokeboxColors
 import android.Manifest
 import android.os.Build
 import android.os.Bundle
+import android.app.Application
 import android.content.Context
 import android.content.res.Configuration
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import androidx.activity.ComponentActivity
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -63,14 +66,24 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        val player = ViewModelProvider(this)[JokeboxPlayerViewModel::class.java].player
         setContent {
-            JokeboxApp()
+            JokeboxApp(player)
         }
     }
 }
 
+class JokeboxPlayerViewModel(application: Application) : AndroidViewModel(application) {
+    val player: ExoPlayer = ExoPlayer.Builder(application).build()
+
+    override fun onCleared() {
+        player.release()
+        super.onCleared()
+    }
+}
+
 @Composable
-fun JokeboxApp() {
+fun JokeboxApp(player: ExoPlayer) {
     val context = LocalContext.current
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val categoryCoverPrefs = remember {
@@ -319,10 +332,6 @@ fun JokeboxApp() {
         }
     }
 
-    val player = remember {
-        ExoPlayer.Builder(context.applicationContext).build()
-    }
-
     fun playCategorySongs(categorySongs: List<Song>, shuffle: Boolean = false) {
         val queue = if (shuffle) categorySongs.shuffled() else categorySongs
         if (queue.isNotEmpty()) {
@@ -531,7 +540,6 @@ fun JokeboxApp() {
 
         onDispose {
             player.removeListener(listener)
-            player.release()
         }
     }
 

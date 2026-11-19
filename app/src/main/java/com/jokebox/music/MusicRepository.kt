@@ -18,6 +18,7 @@ data class Song(
     val albumId: Long,
     val albumTitle: String,
     val dateAdded: Long,
+    val year: Int? = null,
 )
 
 data class MusicAlbum(
@@ -34,6 +35,24 @@ data class MusicPlaylist(
 suspend fun loadMusic(context: Context): List<Song> = withContext(Dispatchers.IO) {
 
     val songs = mutableListOf<Song>()
+    val albumReleaseYears = mutableMapOf<Long, Int>()
+
+    context.contentResolver.query(
+        MediaStore.Audio.Albums.EXTERNAL_CONTENT_URI,
+        arrayOf(MediaStore.Audio.Albums._ID, MediaStore.Audio.Albums.FIRST_YEAR),
+        null,
+        null,
+        null,
+    )?.use { cursor ->
+        val albumIdColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Albums._ID)
+        val firstYearColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Albums.FIRST_YEAR)
+        while (cursor.moveToNext()) {
+            val firstYear = cursor.getInt(firstYearColumn).takeIf { it > 0 }
+            if (firstYear != null) {
+                albumReleaseYears[cursor.getLong(albumIdColumn)] = firstYear
+            }
+        }
+    }
 
     val collection = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
 
@@ -45,6 +64,7 @@ suspend fun loadMusic(context: Context): List<Song> = withContext(Dispatchers.IO
         MediaStore.Audio.Media.ALBUM_ID,
         MediaStore.Audio.Media.ALBUM,
         MediaStore.Audio.Media.DATE_ADDED,
+        MediaStore.Audio.Media.YEAR,
     )
 
     val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
@@ -68,12 +88,15 @@ suspend fun loadMusic(context: Context): List<Song> = withContext(Dispatchers.IO
 
         val dateAddedColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_ADDED)
 
+        val yearColumn = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.YEAR)
+
         while (cursor.moveToNext()) {
 
             val id = cursor.getLong(idColumn)
             val albumId = cursor.getLong(albumIdColumn)
             val albumTitle = cursor.getString(albumTitleColumn) ?: "Unknown Album"
             val dateAdded = cursor.getLong(dateAddedColumn)
+            val year = cursor.getInt(yearColumn).takeIf { it > 0 }
 
             val contentUri = ContentUris.withAppendedId(collection, id)
 
@@ -106,7 +129,8 @@ suspend fun loadMusic(context: Context): List<Song> = withContext(Dispatchers.IO
                     albumArtUri = albumArtUri,
                     albumId = albumId,
                     albumTitle = albumTitle,
-                    dateAdded = dateAdded
+                    dateAdded = dateAdded,
+                    year = albumReleaseYears[albumId] ?: year,
                 )
             )
         }

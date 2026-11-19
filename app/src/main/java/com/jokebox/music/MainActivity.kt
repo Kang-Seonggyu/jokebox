@@ -5,6 +5,7 @@ import android.Manifest
 import android.os.Build
 import android.os.Bundle
 import android.content.Context
+import android.content.res.Configuration
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -29,12 +30,14 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.material3.*
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
@@ -69,6 +72,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun JokeboxApp() {
     val context = LocalContext.current
+    val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val categoryCoverPrefs = remember {
         context.getSharedPreferences(
             "jokebox_preferences", Context.MODE_PRIVATE
@@ -76,6 +80,8 @@ fun JokeboxApp() {
     }
 
     var selectedTab by remember { mutableStateOf("Music") }
+    var albumSortMode by rememberSaveable { mutableStateOf("발매일 순") }
+    var isAlbumGridScrolling by remember { mutableStateOf(false) }
     var selectedSong by remember { mutableStateOf<Song?>(null) }
     var favoriteSongIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
 
@@ -454,13 +460,16 @@ fun JokeboxApp() {
 
     // 플레이어 상태 감지
     val albums = remember(songs) {
-        songs.groupBy { it.albumId }
-            .map { (albumId, albumSongs) ->
+        songs.groupBy { it.albumTitle.trim().lowercase() }
+            .map { (_, albumSongs) ->
                 val firstSong = albumSongs.first()
+                val artistsInAlbum = albumSongs
+                    .map { it.artist.trim().lowercase() }
+                    .distinct()
                 MusicAlbum(
-                    id = albumId,
-                    title = firstSong.albumTitle,
-                    artist = firstSong.artist,
+                    id = albumSongs.minOf { it.albumId },
+                    title = firstSong.albumTitle.trim(),
+                    artist = if (artistsInAlbum.size > 1) "Various Artist" else firstSong.artist,
                     songs = albumSongs,
                 )
             }
@@ -641,7 +650,7 @@ fun JokeboxApp() {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 20.dp, vertical = 12.dp)
+                                .padding(horizontal = 20.dp, vertical = if (isLandscape) 4.dp else 12.dp)
                         ) {
                             Header()
                         }
@@ -804,12 +813,17 @@ fun JokeboxApp() {
                     HorizontalPager(
                         state = pagerState,
                         modifier = Modifier.fillMaxSize(),
+                        userScrollEnabled = !isAlbumGridScrolling,
                     ) { page ->
                         Column(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(
-                                    horizontal = if (tabs[page].first == "Music") 0.dp else 20.dp,
+                                    horizontal = when (tabs[page].first) {
+                                        "Music" -> 0.dp
+                                        "Albums" -> if (selectedAlbum == null) 0.dp else 20.dp
+                                        else -> 20.dp
+                                    },
                                     vertical = 8.dp,
                                 )
                         ) {
@@ -1285,6 +1299,9 @@ fun JokeboxApp() {
                                 AlbumsContent(
                                     albums = albums,
                                     onAlbumClick = { selectedAlbum = it },
+                                    sortMode = albumSortMode,
+                                    onSortModeChange = { albumSortMode = it },
+                                    onGridScrollStateChanged = { isAlbumGridScrolling = it }
                                 )
                             } else {
                                 PlaylistDetailContent(

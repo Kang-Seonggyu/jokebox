@@ -18,6 +18,11 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -44,6 +49,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import androidx.compose.material3.*
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.media3.common.Player
@@ -1126,32 +1133,318 @@ private fun PlayerActionButton(
 
 
 @Composable
+private fun AlbumSortIcon() {
+    Canvas(modifier = Modifier.size(18.dp)) {
+        val color = JokeboxColors.Primary
+        val stroke = size.minDimension * 0.11f
+        val left = size.width * 0.08f
+        val right = size.width * 0.58f
+        val top = size.height * 0.22f
+        val gap = size.height * 0.28f
+
+        drawLine(color, Offset(left, top), Offset(right, top), stroke, StrokeCap.Round)
+        drawLine(color, Offset(left, top + gap), Offset(size.width * 0.48f, top + gap), stroke, StrokeCap.Round)
+        drawLine(color, Offset(left, top + gap * 2), Offset(size.width * 0.36f, top + gap * 2), stroke, StrokeCap.Round)
+        drawLine(
+            color,
+            Offset(size.width * 0.82f, size.height * 0.2f),
+            Offset(size.width * 0.82f, size.height * 0.72f),
+            stroke,
+            StrokeCap.Round,
+        )
+        drawLine(
+            color,
+            Offset(size.width * 0.65f, size.height * 0.56f),
+            Offset(size.width * 0.82f, size.height * 0.76f),
+            stroke,
+            StrokeCap.Round,
+        )
+        drawLine(
+            color,
+            Offset(size.width * 0.99f, size.height * 0.56f),
+            Offset(size.width * 0.82f, size.height * 0.76f),
+            stroke,
+            StrokeCap.Round,
+        )
+    }
+}
+
+@Composable
+private fun AlbumDropdownArrowIcon() {
+    Canvas(modifier = Modifier.size(16.dp)) {
+        val path = Path().apply {
+            moveTo(size.width * 0.2f, size.height * 0.38f)
+            lineTo(size.width * 0.5f, size.height * 0.66f)
+            lineTo(size.width * 0.8f, size.height * 0.38f)
+        }
+        drawPath(
+            path = path,
+            color = JokeboxColors.TextSecondary,
+            style = androidx.compose.ui.graphics.drawscope.Stroke(
+                width = size.minDimension * 0.12f,
+                cap = StrokeCap.Round,
+                join = androidx.compose.ui.graphics.StrokeJoin.Round,
+            ),
+        )
+    }
+}
+
+@Composable
 fun AlbumsContent(
     albums: List<MusicAlbum>,
+    sortMode: String,
+    onSortModeChange: (String) -> Unit,
     onAlbumClick: (MusicAlbum) -> Unit,
+    onGridScrollStateChanged: (Boolean) -> Unit,
 ) {
-    LazyColumn(
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        if (albums.isEmpty()) {
-            item {
-                Text(
-                    text = "앨범이 없습니다.",
-                    color = JokeboxColors.TextSecondary,
-                    fontSize = 14.sp,
-                )
-            }
-        } else {
-            items(albums, key = { it.id }) { album ->
-                MusicCollectionRow(
-                    title = album.title,
-                    subtitle = "${album.artist} · ${album.songs.size}곡",
-                    coverSong = album.songs.firstOrNull(),
-                    onClick = { onAlbumClick(album) },
-                )
-            }
+    var sortMenuExpanded by remember { mutableStateOf(false) }
+    val gridState = rememberLazyGridState()
+    val coroutineScope = rememberCoroutineScope()
+    var isScrollbarVisible by remember { mutableStateOf(false) }
+    val showScrollToTop by remember(gridState) {
+        derivedStateOf {
+            gridState.firstVisibleItemIndex >= gridState.layoutInfo.visibleItemsInfo.size
         }
     }
+    val sortedAlbums = remember(albums, sortMode) {
+        when (sortMode) {
+            "발매일 순" -> albums.sortedWith(
+                compareByDescending<MusicAlbum> { album ->
+                    album.songs.mapNotNull { it.year }.maxOrNull() ?: 0
+                }.thenBy { it.title.lowercase() }
+            )
+            "아티스트 순" -> albums.sortedWith(
+                compareBy<MusicAlbum> { it.artist.lowercase() }
+                    .thenBy { it.title.lowercase() }
+            )
+            else -> albums.sortedBy { it.title.lowercase() }
+        }
+    }
+
+    LaunchedEffect(gridState.isScrollInProgress) {
+        onGridScrollStateChanged(gridState.isScrollInProgress)
+        if (gridState.isScrollInProgress) {
+            isScrollbarVisible = true
+        } else {
+            delay(1_400)
+            isScrollbarVisible = false
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose { onGridScrollStateChanged(false) }
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 12.dp),
+    ) {
+        LazyVerticalGrid(
+            state = gridState,
+            columns = GridCells.Adaptive(minSize = 136.dp),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(top = 8.dp, bottom = 20.dp, end = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            item(span = { GridItemSpan(maxLineSpan) }) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Box {
+                        Surface(
+                            color = JokeboxColors.SurfaceVariant,
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.clickable { sortMenuExpanded = true },
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                AlbumSortIcon()
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = sortMode,
+                                    color = JokeboxColors.TextPrimary,
+                                    fontSize = 13.sp,
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                AlbumDropdownArrowIcon()
+                            }
+                        }
+                        DropdownMenu(
+                            expanded = sortMenuExpanded,
+                            onDismissRequest = { sortMenuExpanded = false },
+                        ) {
+                            listOf("발매일 순", "이름 순", "아티스트 순").forEach { option ->
+                                DropdownMenuItem(
+                                    text = { Text(option) },
+                                    onClick = {
+                                        onSortModeChange(option)
+                                        sortMenuExpanded = false
+                                    },
+                                )
+                            }
+                        }
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        text = "${albums.size}개 앨범",
+                        color = JokeboxColors.TextSecondary,
+                        fontSize = 13.sp,
+                    )
+                }
+            }
+
+            if (sortedAlbums.isEmpty()) {
+                item(span = { GridItemSpan(maxLineSpan) }) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(240.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = "앨범이 없습니다.",
+                            color = JokeboxColors.TextSecondary,
+                            fontSize = 14.sp,
+                        )
+                    }
+                }
+            } else {
+                items(sortedAlbums, key = { it.id }) { album ->
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onAlbumClick(album) },
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(1f)
+                                .clip(RoundedCornerShape(14.dp))
+                                .background(JokeboxColors.SurfaceVariant),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            val coverUri = album.songs.firstOrNull()?.albumArtUri
+                            if (coverUri != null) {
+                                AsyncImage(
+                                    model = coverUri,
+                                    contentDescription = "${album.title} 앨범 표지",
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentScale = ContentScale.Crop,
+                                )
+                            } else {
+                                Text(
+                                    text = "♫",
+                                    color = JokeboxColors.Primary,
+                                    fontSize = 36.sp,
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = album.title,
+                            color = JokeboxColors.TextPrimary,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp,
+                            lineHeight = 14.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = "${album.artist} | ${album.songs.size}곡",
+                            color = JokeboxColors.TextSecondary,
+                            fontSize = 12.sp,
+                            lineHeight = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+        }
+
+                if (isScrollbarVisible && gridState.layoutInfo.totalItemsCount > 0) {
+                    BoxWithConstraints(
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .fillMaxHeight()
+                            .width(24.dp)
+                            .pointerInput(sortedAlbums.size) {
+                                var dragY = 0f
+
+                                fun scrollToFraction(y: Float) {
+                                    val fraction = (y / size.height.coerceAtLeast(1))
+                                        .coerceIn(0f, 1f)
+                                    val lastIndex = (gridState.layoutInfo.totalItemsCount - 1)
+                                        .coerceAtLeast(0)
+                                    coroutineScope.launch {
+                                        gridState.scrollToItem((fraction * lastIndex).toInt())
+                                    }
+                                }
+
+                                detectVerticalDragGestures(
+                                    onDragStart = { offset ->
+                                        dragY = offset.y
+                                        scrollToFraction(dragY)
+                                    },
+                                    onVerticalDrag = { change, dragAmount ->
+                                        dragY = (dragY + dragAmount).coerceIn(0f, size.height.toFloat())
+                                        scrollToFraction(dragY)
+                                        change.consume()
+                                    },
+                                )
+                            },
+                    ) {
+                        val totalItems = gridState.layoutInfo.totalItemsCount.coerceAtLeast(1)
+                        val visibleItems = gridState.layoutInfo.visibleItemsInfo.size.coerceAtLeast(1)
+                        val thumbHeight = (maxHeight * (visibleItems.toFloat() / totalItems))
+                            .coerceAtLeast(36.dp)
+                            .coerceAtMost(maxHeight)
+                        val lastScrollIndex = (totalItems - visibleItems).coerceAtLeast(1)
+                        val scrollFraction = (gridState.firstVisibleItemIndex.toFloat() /
+                            lastScrollIndex).coerceIn(0f, 1f)
+
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .offset(y = (maxHeight - thumbHeight) * scrollFraction)
+                                .width(4.dp)
+                                .height(thumbHeight)
+                                .background(JokeboxColors.Primary, CircleShape),
+                        )
+                    }
+                }
+
+                if (showScrollToTop) {
+                    Surface(
+                        color = JokeboxColors.Primary,
+                        shape = CircleShape,
+                        shadowElevation = 6.dp,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 12.dp)
+                            .size(48.dp)
+                            .clickable {
+                                coroutineScope.launch { gridState.animateScrollToItem(0) }
+                            },
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                text = "↑",
+                                color = JokeboxColors.Background,
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    }
+                }
+            }
 }
 
 @Composable

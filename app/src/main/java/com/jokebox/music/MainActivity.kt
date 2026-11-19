@@ -15,6 +15,14 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.result.PickVisualMediaRequest
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -36,6 +44,8 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
+import androidx.media3.common.text.CueGroup
+import androidx.media3.common.Tracks
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.common.Player
 import androidx.media3.common.C
@@ -352,6 +362,15 @@ fun JokeboxApp() {
     var totalDuration by remember {
         mutableLongStateOf(0L)
     }
+    var playerVolume by remember {
+        mutableFloatStateOf(player.volume)
+    }
+    var lyricsAvailable by remember {
+        mutableStateOf(false)
+    }
+    var currentLyrics by remember {
+        mutableStateOf("")
+    }
 
     // 1. 음악 접근 권한 확인
     val audioPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -460,6 +479,17 @@ fun JokeboxApp() {
                 isPlaying = playing
             }
 
+            override fun onCues(cueGroup: CueGroup) {
+                currentLyrics = cueGroup.cues
+                    .mapNotNull { cue -> cue.text?.toString()?.takeIf { it.isNotBlank() } }
+                    .joinToString("\n")
+            }
+
+            override fun onTracksChanged(tracks: Tracks) {
+                lyricsAvailable = tracks.groups.any { it.type == C.TRACK_TYPE_TEXT }
+                if (!lyricsAvailable) currentLyrics = ""
+            }
+
             override fun onMediaItemTransition(
                 mediaItem: MediaItem?, reason: Int
             ) {
@@ -471,6 +501,7 @@ fun JokeboxApp() {
 
                 if (currentSong != null) {
                     selectedSong = currentSong
+                    currentLyrics = ""
 
                     // 새로운 곡의 재생 기록 시작
                     listenedDuration = 0L
@@ -584,11 +615,28 @@ fun JokeboxApp() {
             selectedArtist = null
         }
 
-        Scaffold(
+        SharedTransitionLayout {
+            val sharedTransitionScope = this
+            AnimatedContent(
+                targetState = showNowPlaying && selectedSong != null,
+                modifier = Modifier.fillMaxSize(),
+                transitionSpec = {
+                    if (targetState) {
+                        (fadeIn(tween(300)) + slideInVertically(tween(340)) { it / 14 }) togetherWith
+                            (fadeOut(tween(180)) + slideOutVertically(tween(260)) { -it / 24 })
+                    } else {
+                        (fadeIn(tween(280)) + slideInVertically(tween(300)) { -it / 24 }) togetherWith
+                            (fadeOut(tween(200)) + slideOutVertically(tween(300)) { it / 14 })
+                    }
+                },
+                label = "player_screen_transition",
+            ) { fullPlayerVisible ->
+                val animatedVisibilityScope = this
+                Scaffold(
             containerColor = JokeboxColors.Background,
             contentWindowInsets = WindowInsets.safeDrawing,
             topBar = {
-                if (!showNowPlaying) {
+                if (!fullPlayerVisible) {
                     Column(modifier = Modifier.statusBarsPadding()) {
                         Box(
                             modifier = Modifier
@@ -615,10 +663,12 @@ fun JokeboxApp() {
                 }
             },
             bottomBar = {
-                if (!showNowPlaying) {
+                if (!fullPlayerVisible) {
                     Column(modifier = Modifier.navigationBarsPadding()) {
                         MiniPlayer(
                             song = selectedSong,
+                            sharedTransitionScope = sharedTransitionScope,
+                            animatedVisibilityScope = animatedVisibilityScope,
                             isPlaying = isPlaying,
                             onPlayPause = {
                                 if (player.isPlaying) player.pause()
@@ -652,10 +702,16 @@ fun JokeboxApp() {
             },
         ) { innerPadding ->
 
-            if (showNowPlaying && selectedSong != null) {
-
-                NowPlayingContent(
+            if (fullPlayerVisible && selectedSong != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding),
+                ) {
+                    NowPlayingContent(
                     song = selectedSong!!,
+                    sharedTransitionScope = sharedTransitionScope,
+                    animatedVisibilityScope = animatedVisibilityScope,
                     isPlaying = isPlaying,
                     currentPosition = currentPosition,
                     totalDuration = totalDuration,
@@ -706,8 +762,38 @@ fun JokeboxApp() {
                         } else {
                             favoriteSongIds + songId
                         }
-                    })
-
+                    },
+                    lyricsAvailable = lyricsAvailable,
+                    lyrics = currentLyrics,
+                    playlists = playlists,
+                    onAddToPlaylist = { playlist ->
+                        val songId = selectedSong!!.id
+                        playlists = playlists.map { currentPlaylist ->
+                            if (currentPlaylist.id == playlist.id) {
+                                currentPlaylist.copy(
+                                    songIds = currentPlaylist.songIds + songId
+                                )
+                            } else {
+                                currentPlaylist
+                            }
+                        }
+                    },
+                    onOpenQueue = {
+                        queueSongsForSheet = (0 until player.mediaItemCount)
+                            .mapNotNull { index ->
+                                val uri = player.getMediaItemAt(index)
+                                    .localConfiguration?.uri
+                                songs.firstOrNull { it.uri == uri }
+                            }
+                        showQueue = true
+                    },
+                    volume = playerVolume,
+                    onVolumeChange = { newVolume ->
+                        playerVolume = newVolume
+                        player.volume = newVolume
+                    },
+                    )
+                }
             } else {
 
                 Column(
@@ -1251,6 +1337,8 @@ fun JokeboxApp() {
                     }
                         }
                     }
+                }
+            }
                 }
             }
         }
